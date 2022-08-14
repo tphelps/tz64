@@ -8,6 +8,7 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include "tz.h"
 #include "tzfile.h"
 
 const char *progname;
@@ -24,7 +25,7 @@ static void set_progname(const char *arg0)
 
 static void usage()
 {
-    fprintf(stderr, "usage: %s [tzfile]...\n", progname);
+    fprintf(stderr, "usage: %s [-r] [-1] [tzfile]...\n", progname);
     fprintf(stderr, "usage: %s -h\n", progname);
 }
 
@@ -34,8 +35,25 @@ static const char *format_utc(time_t t)
     static char buffer[32];
 
     struct tm tm;
-    gmtime_r(&t, &tm);
-    strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+    if (gmtime_r(&t, &tm) == NULL) {
+        snprintf(buffer, sizeof(buffer), "<out of range>");
+    } else {
+        strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+    }
+    return buffer;
+}
+
+
+static const char *format_offset(int32_t offset)
+{
+    static char buffer[16];
+
+    int32_t abs_offset = (offset < 0) ? -offset : offset;
+    snprintf(buffer, sizeof(buffer), "%s%02d:%02d:%02d",
+             (offset == 0) ? "": (offset < 0) ? "-" : "+",
+             abs_offset / 3600,
+             abs_offset / 60 % 60,
+             abs_offset % 60);
     return buffer;
 }
 
@@ -375,7 +393,7 @@ static void dump_tzif(const char *path, FILE *file)
 }
 
 
-static void process_file(const char *path)
+static void dump_raw_file(const char *path)
 {
     // Open the file.
     FILE* file = fopen(path, "r");
@@ -394,12 +412,60 @@ static void process_file(const char *path)
 }
 
 
+static void dump_cooked_file(const char *path)
+{
+    // Load the file.
+    struct time_zone *tz = tzalloc(path);
+    if (tz == NULL) {
+        fprintf(stderr, "%s: error: failed to load TZ file %s: %s\n", progname, path, strerror(errno));
+        return;
+    }
+
+    // Print out each transition time.
+    printf("== %s ==\n", path);
+    printf("-- timestamps --\n");
+    const struct tz_offset *offset = &tz->offsets[tz->offset_map[0]];
+    printf("   :             ( the dawn of time  )/0 (%s %s %s)\n",
+           format_offset(offset->utoff),
+           tz->desig + offset->desig,
+           offset->isdst ? "dst" : "std");
+
+    for (uint32_t i = 1; i < tz->ts_count; i++) {
+        offset = &tz->offsets[tz->offset_map[i]];
+        printf("%3u: %11" PRId64 " (%s)/%u (%s %s %s)\n",
+               i - 1, tz->timestamps[i],
+               format_utc(tz->timestamps[i]),
+               tz->offset_map[i],
+               format_offset(offset->utoff),
+               tz->desig + offset->desig,
+               offset->isdst ? "dst" : "std");
+    }
+
+    printf("-- TZ string --\n");
+    printf("%s\n", tz->tz);
+
+    if (tz->leap_count != 0) {
+        printf("-- leap seconds --\n");
+        for (uint32_t i = 0; i < tz->leap_count; i++) {
+            printf("%u: %" PRId64 " (%s): %d\n",
+                   i, tz->leaps[i].timestamp,
+                   format_utc(tz->leaps[i].timestamp),
+                   tz->leaps[i].secs);
+        }
+    }
+    
+    tzfree(tz);
+}
+
+
+
 int main(int argc, char *argv[])
 {
     set_progname(argv[0]);
 
+    bool raw_mode = false;
     int choice;
-    while ((choice = getopt(argc, argv, "1h")) != -1) {
+    while ((choice = getopt(argc, argv, "1hr")) != -1) {
         switch (choice) {
         case '1':
             dump_v1_data = true;
@@ -408,6 +474,10 @@ int main(int argc, char *argv[])
         case 'h':
             usage();
             exit(0);
+
+        case 'r':
+            raw_mode = true;
+            break;
 
         case '?':
             usage();
@@ -419,7 +489,11 @@ int main(int argc, char *argv[])
     }
 
     while (optind < argc) {
-        process_file(argv[optind++]);
+        if (raw_mode) {
+            dump_raw_file(argv[optind++]);
+        } else {
+            dump_cooked_file(argv[optind++]);
+        }
     }
 
     exit(0);

@@ -14,19 +14,22 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <assert.h>
+#include "tz.h"
 #include "tzfile.h"
 
-extern const char *progname;
+#define MAGIC "TZif"
 
+extern const char *progname;
+static const size_t max_tz_str_size = 64;
 
 size_t tz_header_data_len(const struct tz_header *header, size_t time_size)
 {
     return
         header->timecnt * time_size +
         header->timecnt +
-        header->typecnt * (4 + 1 + 1) +
+        header->typecnt * (sizeof(int32_t) + 1 + 1) +
         header->charcnt +
-        header->leapcnt * (time_size + time_size) +
+        header->leapcnt * (time_size + sizeof(int32_t)) +
         header->isstdcnt +
         header->isutcnt;
 }
@@ -42,34 +45,28 @@ void tz_header_fix_endian(struct tz_header *header)
 }
 
 
-
 static struct time_zone *process_tzfile(const char *path, const char *data, off_t size)
 {
     const char *end = data + size;
 
     if (data + sizeof(struct tz_header) >= end) {
-        fprintf(stderr, "%s: error: %s too short to be a time zone file\n", progname, path);
-        exit(1);
+        errno = EINVAL;
+        return NULL;
     }
 
     // Bail if the magic is wrong.
-    if (memcmp(data, "TZif", 4) != 0) {
-        fprintf(stderr, "%s: error: %s is not a time zone file: bad magic\n", progname, path);
-        exit(1);
+    if (memcmp(data, MAGIC, strlen(MAGIC)) != 0) {
+        errno = EINVAL;
+        return NULL;
     }
-    printf("magic: %.4s\n", data);
 
-    // Bail i fthe version isn't supported.
+
+    // Bail if the version isn't supported.
     char version = data[4];
-    if (version == '\0') {
-        version = 1;
+    if (version < '2' || version > '9') {
+        errno = EINVAL;
+        return NULL;
     }
-    if (version < '!') {
-        fprintf(stderr, "%s: error: invalid version %d (%c)\n",
-                progname, version, (version < ' ' || version > '~') ? '.' : version);
-        exit(1);
-    }
-    printf("version: %c (%s)\n", version, (version < '1' || version > '4') ? "unsupported" : "ok");
 
     // Make a copy of the header and adjust the byte order.
     struct tz_header header;
@@ -77,70 +74,18 @@ static struct time_zone *process_tzfile(const char *path, const char *data, off_
     data += sizeof(struct tz_header);
     tz_header_fix_endian(&header);
 
-    // Make sure the v1 data is present.
-    if (end - data < tz_header_data_len(&header, sizeof(int32_t))) {
-        fprintf(stderr, "%s: error: time zone file %s appears to be truncated\n", progname, path);
-        exit(1);
-    }
-    
-    if (version == '\0') {
-        printf("%u transition times\n", header.timecnt);
-
-        const char *p = data + header.timecnt * sizeof(int32_t);
-        for (uint32_t i = 0; i < header.timecnt; i++) {
-            int32_t ts;
-            memcpy(&ts, data, sizeof(ts));
-            data += sizeof(ts);
-
-            printf("%d: %d/%d\n", i, be32toh(ts), *p++);
-        }
-        data = p;
-
-        printf("%u time types\n", header.typecnt);
-        p = data + header.typecnt * 6;
-        for (uint32_t i = 0; i < header.typecnt; i++) {
-            int32_t utoff;
-            memcpy(&utoff, data, sizeof(utoff));
-            data += 4;
-            printf("%d: utoff %d, %s, idx=%s\n",
-                   i, be32toh(utoff), data[0] ? "DST" : "std", p + data[1]);
-            data += 2;
-        }
-
-        data = p + header.charcnt;
-
-        printf("Leap-Second Records\n");
-
-        for (uint32_t i = 0; i < header.leapcnt; i++) {
-            uint32_t occur, corr;
-            memcpy(&occur, data, sizeof(occur));
-            data += sizeof(occur);
-            memcpy(&corr, data, sizeof(corr));
-            data += sizeof(corr);
-
-            printf("%d: %d/%d\n", i, be32toh(occur), be32toh(corr));
-        }
-
-        printf("Standard/Wall Indicators\n");
-        for (uint32_t i = 0; i < header.isstdcnt; i++) {
-            printf("%d: %s\n", i, *data++ ? "std" : "wall");
-        }
-
-        printf("UT/Local Indicators\n");
-        for (uint32_t i = 0; i < header.isutcnt; i++) {
-            printf("%d: %s\n", i, *data++ ? "ut" : "local");
-        }
-
+    // Make sure the v1 data is present and skip it.
+    const size_t v1_size = tz_header_data_len(&header, sizeof(int32_t));
+    if (end - data < v1_size) {
+        errno = EINVAL;
         return NULL;
     }
-
-    // Skip the v1 header data.
-    data += tz_header_data_len(&header, sizeof(int32_t));
+    data += v1_size;
 
     // Make sure there's a v2 header.
     if (end - data < sizeof(struct tz_header)) {
-        fprintf(stderr, "%s: error: time zone file %s appears to be truncated\n", progname, path);
-        exit(1);
+        errno = EINVAL;
+        return NULL;
     }
 
     // Make a copy of the v2 header and adjust the byte order.
@@ -148,72 +93,152 @@ static struct time_zone *process_tzfile(const char *path, const char *data, off_
     data += sizeof(header);
     tz_header_fix_endian(&header);
 
-    // Make sure the v2 data is present.
-    if (end - data < tz_header_data_len(&header, sizeof(int64_t))) {
-        fprintf(stderr, "%s: error: time zone file %s appears to be truncated\n", progname, path);
-        exit(1);
+    // Check the second header's magic.
+    if (memcmp(header.magic, MAGIC, strlen(MAGIC)) != 0) {
+        errno = EINVAL;
+        return NULL;
     }
 
-    // Print the v2 data.
-    printf("%u transition times/types\n", header.timecnt);
-    
-
-    if (header.timecnt != 0) {
-        printf("%u transition times\n", header.timecnt);
+    // Make sure the file is big enough for the v2 data.
+    size_t v2_size = tz_header_data_len(&header, sizeof(int64_t));
+    if (end - data < v2_size) {
+        errno = EINVAL;
+        return NULL;
     }
 
-    const char *p = data + header.timecnt * sizeof(int64_t);
+    // Allocate memory for the v2 data.
+    size_t block_size =
+        sizeof(struct time_zone) +
+        (header.timecnt + 1) * sizeof(int64_t) +
+        header.typecnt * sizeof(struct tz_offset) +
+        header.leapcnt * sizeof(struct tz_leap) +
+        header.timecnt + 1 +
+        header.charcnt +
+        max_tz_str_size;
+    char *block = malloc(block_size);
+    struct time_zone *tz = (struct time_zone *)block;
+    block += sizeof(struct time_zone);
+
+    // Set up pointers to the various fields.
+    int64_t *timestamps = (int64_t *)block;
+    block += (header.timecnt + 1) * sizeof(int64_t);
+    struct tz_offset *offsets = (struct tz_offset *)block;
+    block += header.typecnt * sizeof(struct tz_offset);
+    struct tz_leap *leaps = (struct tz_leap *)block;
+    block += header.leapcnt * sizeof(struct tz_leap);
+    uint8_t *offset_map = (uint8_t *)block;
+    block += header.timecnt + 1;
+    char *desig = block;
+    block += header.charcnt;
+    char *tz_str = block;
+
+    // Read in the timestamps.
+    timestamps[0] = INT64_MIN;
     for (uint32_t i = 0; i < header.timecnt; i++) {
         int64_t ts;
-        memcpy(&ts, data, sizeof(ts));
+        memcpy(&ts, data, sizeof(tz));
         data += sizeof(ts);
+        ts = be64toh(ts);
 
-        printf("%d: %" PRId64 "/%d\n", i, be64toh(ts), *p++);
+        if (ts <= timestamps[i]) {
+            errno = EINVAL;
+            goto err;
+        }
+        timestamps[i + 1] = ts;
     }
-    data = p;
 
-    printf("%u time types\n", header.typecnt);
-    p = data + header.typecnt * 6;
+    // Read the timestamp/offset map.
+    offset_map[0] = 0;
+    memcpy(offset_map + 1, data, header.timecnt);
+    for (uint32_t i = 0; i < header.timecnt; i++) {
+        if (offset_map[i] > header.typecnt) {
+            errno = EINVAL;
+            goto err;
+        }
+    }
+    data += header.timecnt;
+
+    // Read the time types.
     for (uint32_t i = 0; i < header.typecnt; i++) {
         int32_t utoff;
         memcpy(&utoff, data, sizeof(utoff));
-        data += 4;
-        printf("%d: utoff %d, %s, idx=%s\n",
-               i, be32toh(utoff), data[0] ? "DST" : "std", p + data[1]);
-        data += 2;
-    }
-    data = p + header.charcnt;
+        data += sizeof(utoff);
+        utoff = be32toh(utoff);
 
-    printf("Leap-Second Records\n");
+        offsets[i].utoff = utoff;
+        offsets[i].isdst = *data++;
+        offsets[i].desig = *data++;
+
+        if (offsets[i].desig >= header.charcnt) {
+            errno = EINVAL;
+            goto err;
+        }
+    }
+
+    // Read the designations.
+    memcpy(desig, data, header.charcnt);
+    if (desig[header.charcnt -1] != '\0') {
+        errno = EINVAL;
+        goto err;
+    }
+    data += header.charcnt;
+    
+    // Read the leap second information.
     for (uint32_t i = 0; i < header.leapcnt; i++) {
-        uint64_t occur;
-        uint32_t corr;
+        int64_t ts;
+        memcpy(&ts, data, sizeof(ts));
+        data += sizeof(ts);
+        ts = be64toh(ts);
 
-        memcpy(&occur, data, sizeof(occur));
-        data += sizeof(occur);
-        memcpy(&corr, data, sizeof(corr));
-        data += sizeof(corr);
+        int32_t secs;
+        memcpy(&secs, data, sizeof(secs));
+        data += sizeof(secs);
+        secs = be32toh(secs);
 
-        printf("%d: %" PRId64 "/%d\n", i, be64toh(occur), be32toh(corr));
+        leaps[i].timestamp = ts;
+        leaps[i].secs = secs;
     }
 
-    printf("Standard/Wall Indicators\n");
-    for (uint32_t i = 0; i < header.isstdcnt; i++) {
-        printf("%d: %s\n", i, *data++ ? "std" : "wall");
-    }
+    // Skip the standard/wall indicators.
+    data += header.isstdcnt;
 
-    printf("UT/Local Indicators\n");
-    for (uint32_t i = 0; i < header.isutcnt; i++) {
-        printf("%d: %s\n", i, *data++ ? "ut" : "local");
-    }
+    // Skip the UT/local indicators.
+    data += header.isutcnt;
 
     // Read the footer.
-    size_t len = end - data;
-    if (len != 0) {
-        assert(len >= 2);
-        printf("TZ: %.*s\n", (int)(len - 2), data + 1);
+    if (data == end) {
+        tz->tz = NULL;
+    } else {
+        if (*data++ != '\n') {
+            errno = EINVAL;
+            goto err;
+        }
+
+        // Find a newline.
+        size_t s = (end - data) < max_tz_str_size ? (end - data) : max_tz_str_size;
+        const char *nl = memchr(data, '\n', s);
+        if (nl == NULL) {
+            errno = EINVAL;
+            goto err;
+        }
+
+        memcpy(tz_str, data, nl - data);
+        tz_str[nl - data] = '\0';
     }
 
+    // Populate and the tz itself.
+    tz->ts_count = header.timecnt + 1;
+    tz->leap_count = header.leapcnt;
+    tz->timestamps = timestamps;
+    tz->offset_map = offset_map;
+    tz->leaps = leaps;
+    tz->offsets = offsets;
+    tz->desig = desig;
+    tz->tz = tz_str;
+    return tz;
+
+err:
+    free(tz);
     return NULL;
 }
 
@@ -223,44 +248,37 @@ struct time_zone *tzalloc(const char *path)
     // Open the file.
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
-        fprintf(stderr, "%s: error: failed to open time zone file %s: %s\n",
-                progname, path, strerror(errno));
-        exit(1);
+        return NULL;
     }
 
     // Figure out how big it is.
     struct stat statbuf;
     if (fstat(fd, &statbuf) != 0) {
-        fprintf(stderr, "%s: error: failed to determine size of time zone file %s: %s\n",
-                progname, path, strerror(errno));
-        exit(1);
+        return NULL;
     }
 
     // Map it into memory.
     char *data = mmap(NULL, statbuf.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (data == NULL) {
-        fprintf(stderr, "%s: error: failed to mmap time zone file %s: %s\n",
-                progname, path, strerror(errno));
-        exit(1);
+        (void)close(fd);
+        return NULL;
     }
 
     // Decode the data in the file.
     struct time_zone *tz = process_tzfile(path, data, statbuf.st_size);
 
     // Clean up.
-    if (munmap(data, statbuf.st_size) != 0) {
-        fprintf(stderr, "%s: error: failed to munmap of time zone file %s: %s\n",
-                progname, path, strerror(errno));
-        exit(1);
-    }
+    int res = munmap(data, statbuf.st_size);
+    assert(res == 0);
     
-    if (close(fd) != 0) {
-        fprintf(stderr, "%s: error: failed to close time zone file %s: %s\n",
-                progname, path, strerror(errno));
-        exit(1);
-    }
+    res = close(fd);
+    assert(res == 0);
 
     return tz;
 }
 
 
+void tzfree(struct time_zone *tz)
+{
+    free(tz);
+}
