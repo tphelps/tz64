@@ -18,9 +18,26 @@
 #include "tzfile.h"
 
 #define MAGIC "TZif"
+#define ZONE_DIR "/usr/share/zoneinfo"
 
 extern const char *progname;
 static const size_t max_tz_str_size = 64;
+
+static const int64_t utc_timestamps[1] = { INT64_MIN };
+static const struct tz_offset utc_offsets[1] = { { 0, 0, 0 } };
+static const uint8_t utc_offset_map[1] = { 0 };
+
+struct time_zone tz_utc = {
+    .ts_count = 1,
+    .leap_count = 0,
+    .timestamps = utc_timestamps,
+    .offsets = utc_offsets,
+    .offset_map = utc_offset_map,
+    .leaps = NULL,
+    .desig = "UTC",
+    .tz = "UTC0"
+};
+
 
 size_t tz_header_data_len(const struct tz_header *header, size_t time_size)
 {
@@ -116,6 +133,10 @@ static struct time_zone *process_tzfile(const char *path, const char *data, off_
         header.charcnt +
         max_tz_str_size;
     char *block = malloc(block_size);
+    if (block == NULL) {
+        return NULL;
+    }
+
     struct time_zone *tz = (struct time_zone *)block;
     block += sizeof(struct time_zone);
 
@@ -243,29 +264,32 @@ err:
 }
 
 
-struct time_zone *tzalloc(const char *path)
+static int load_tz(struct time_zone **tz_out, const char *path)
 {
     // Open the file.
     int fd = open(path, O_RDONLY);
     if (fd < 0) {
-        return NULL;
+        return ENOENT;
     }
 
     // Figure out how big it is.
     struct stat statbuf;
     if (fstat(fd, &statbuf) != 0) {
-        return NULL;
+        int err = errno;
+        close(fd);
+        return err;
     }
 
     // Map it into memory.
     char *data = mmap(NULL, statbuf.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
     if (data == NULL) {
+        int err = errno;
         (void)close(fd);
-        return NULL;
+        return err;
     }
 
     // Decode the data in the file.
-    struct time_zone *tz = process_tzfile(path, data, statbuf.st_size);
+    *tz_out = process_tzfile(path, data, statbuf.st_size);
 
     // Clean up.
     int res = munmap(data, statbuf.st_size);
@@ -274,7 +298,99 @@ struct time_zone *tzalloc(const char *path)
     res = close(fd);
     assert(res == 0);
 
+    return 0;
+}
+
+
+static struct time_zone *make_utc()
+{
+    struct time_zone *tz = malloc(sizeof(struct time_zone));
+    if (tz == NULL) {
+        return tz;
+    }
+
+    memcpy(&tz, &tz_utc, sizeof(struct time_zone));
     return tz;
+}
+
+
+static char *mkpath(char *buffer, size_t buflen, const char *rest)
+{
+    size_t baselen = strlen(ZONE_DIR);
+    size_t restlen = strlen(rest);
+    size_t len = baselen + 1 + restlen + 1;
+    if (len > buflen) {
+        return NULL;
+    }
+
+    char *p = buffer;
+    memcpy(p, ZONE_DIR, baselen);
+    p += baselen;
+    *p++ = '/';
+    memcpy(p, rest, restlen);
+    p += restlen;
+    *p++ = '\0';
+
+    return buffer;
+}
+
+
+struct time_zone *tzalloc(const char *tz_desc)
+{
+    char pathbuf[256];
+    struct time_zone *tz;
+
+    // NULL indicates localtime.
+    if (tz_desc == NULL) {
+        // Try /usr/share/zoneinfo/localtime
+        int res = load_tz(&tz, mkpath(pathbuf, sizeof(pathbuf), "localtime"));
+        if (res == 0) {
+            return tz;
+        }
+
+        // Failing that, try /etc/localtime
+        res = load_tz(&tz, "/etc/localtime");
+        if (res == 0) {
+            return tz;
+        }
+    }
+
+    // An empty string means UTC (if no localtime then use UTC).
+    if (tz_desc == NULL || *tz_desc == '\0') {
+        // Then try UTC.
+        int res = load_tz(&tz, mkpath(pathbuf, sizeof(pathbuf), "UTC"));
+        if (res == 0) {
+            return tz;
+        }
+
+        // Create UTC.
+        return make_utc();
+    }
+
+    // If the description begins with a colon then treat it as a path.
+    if (*tz_desc == ':') {
+        const char *path = tz_desc + 1;
+        if (*path == '/') {
+            errno = load_tz(&tz, path);
+        } else {
+            errno = load_tz(&tz, mkpath(pathbuf, sizeof(pathbuf), path));
+        }
+        return tz;
+    }
+
+    // No colon, but try reading as a path anyway.
+    int res;
+    if (*tz_desc == '/') {
+        res = load_tz(&tz, tz_desc);
+    } else {
+        res = load_tz(&tz, mkpath(pathbuf, sizeof(pathbuf), tz_desc));
+    }
+    if (res == 0) {
+        return tz;
+    }
+
+    // FIXME: Otherwise treat it as a POSIX TZ string.
+    return NULL;
 }
 
 
