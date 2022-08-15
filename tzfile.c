@@ -309,7 +309,7 @@ static struct time_zone *make_utc()
         return tz;
     }
 
-    memcpy(&tz, &tz_utc, sizeof(struct time_zone));
+    memcpy(tz, &tz_utc, sizeof(struct time_zone));
     return tz;
 }
 

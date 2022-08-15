@@ -101,7 +101,7 @@ static int64_t ts_to_tm_utc(struct tm *tm, time_t ts)
     }
 
     // Convert the remaining into years and days.
-    int y = (days * 4 + 1) / (days_per_4_nyears);
+    int y = (days * 4 + 3) / days_per_4_nyears;
     year += y;
     days -= (y * days_per_nyear) + y / 4;
 
@@ -110,7 +110,7 @@ static int64_t ts_to_tm_utc(struct tm *tm, time_t ts)
 
     int leap = is_leap(year);
     tm->tm_mon = days / 32;
-    if (days < month_starts[leap][tm->tm_mon]) {
+    if (days >= month_starts[leap][tm->tm_mon + 1]) {
         tm->tm_mon++;
     }
 
