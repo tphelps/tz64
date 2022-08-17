@@ -15,7 +15,7 @@ static const int64_t days_per_nyear = 365;
 static const int64_t days_per_4_nyears = 4 * days_per_nyear + 1;
 static const int64_t days_per_ncentury = 100 * days_per_nyear + 100 / 4 - 1;
 static const int64_t days_per_400_years = 400 * days_per_nyear + 400 / 4 - 4 + 1;
-static const int64_t secs_per_400_years = 400 * days_per_nyear + 400 / 4 - 4 + 1;
+static const int64_t secs_per_400_years = days_per_400_years * secs_per_day;
 static const int64_t avg_secs_per_year = secs_per_400_years / 400;
 
 static const int month_starts[2][13] = {
@@ -59,36 +59,29 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
 {
     // Adjust to seconds since 2001-01-01.
     ts -= alt_ref_ts;
+
+    // Divide out blocks of 400 years to the timestamp into a
+    // convenient range.
+    int64_t year = alt_ref_year;
+    year -= ts / secs_per_400_years;
+    ts %= secs_per_400_years;
+    if (ts < 0) {
+        year -= 400;
+        ts += secs_per_400_years;
+    }
     
     // Divide the timestamp into hours, minutes and seconds.
     tm->tm_sec = ts % secs_per_min;
     ts /= secs_per_min;
-    if (tm->tm_sec < 0) {
-        tm->tm_sec += secs_per_min;
-        ts -= 1;
-    }
     
     tm->tm_min = ts % mins_per_hour;
     ts /= mins_per_hour;
-    if (tm->tm_min < 0) {
-        tm->tm_min += mins_per_hour;
-        ts -= 1;
-    }
     
     tm->tm_hour = ts % hours_per_day;
     ts /= hours_per_day;
-    if (tm->tm_hour < 0) {
-        tm->tm_hour += hours_per_day;
-        ts -= 1;
-    }
 
-    // Divide into days in a 400 year block.
-    int64_t days = ts % days_per_400_years;
-    int64_t year = alt_ref_year + 400 * (ts / days_per_400_years);
-    if (days < 0) {
-        days += days_per_400_years;
-        year -= 400;
-    }
+    // The ts now represents days.
+    int64_t days = ts;
 
     // Every block of 400 days starts on the same day of the week, and
     // 2001-01-01 was a Monday.  Compute the day of the week.
