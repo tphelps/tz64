@@ -15,6 +15,8 @@ static const int64_t days_per_nyear = 365;
 static const int64_t days_per_4_nyears = 4 * days_per_nyear + 1;
 static const int64_t days_per_ncentury = 100 * days_per_nyear + 100 / 4 - 1;
 static const int64_t days_per_400_years = 400 * days_per_nyear + 400 / 4 - 4 + 1;
+static const int64_t secs_per_400_years = 400 * days_per_nyear + 400 / 4 - 4 + 1;
+static const int64_t avg_secs_per_year = secs_per_400_years / 400;
 
 static const int month_starts[2][13] = {
     { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 },
@@ -30,6 +32,11 @@ static const int64_t base_year = 1900;
 static const int64_t ref_year = 1970;
 static const int64_t alt_ref_year = 2001;
 static const int64_t alt_ref_ts = (((alt_ref_year - ref_year) * days_per_nyear) + 8) * secs_per_day;
+
+// Upper and lower bounds on the maximum timestamp that can be
+// represented in a struct tm.
+static const int64_t max_tm_ts = (ref_year - base_year + INT32_MAX + 1) * avg_secs_per_year;
+static const int64_t min_tm_ts = (ref_year - base_year + INT32_MIN - 1) * avg_secs_per_year;
 
 
 static int is_leap(int year)
@@ -48,7 +55,7 @@ static int is_leap(int year)
 
 
 // Populate most of the fields of a struct tm from a UTC timestamp.
-static int64_t ts_to_tm_utc(struct tm *tm, time_t ts)
+static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
 {
     // Adjust to seconds since 2001-01-01.
     ts -= alt_ref_ts;
@@ -121,6 +128,12 @@ static int64_t ts_to_tm_utc(struct tm *tm, time_t ts)
 
 struct tm *localtime_rz(struct time_zone* restrict tz, time_t const *restrict ts, struct tm *restrict tm)
 {
+    // Don't even bother if we know the year will overflow 32 bits.
+    if (*ts < min_tm_ts || *ts > max_tm_ts) {
+        errno = EOVERFLOW;
+        return NULL;
+    }
+
     // Do a binary search to find the index of latest timestamp no
     // later than ts.    
     uint32_t lo = 0, hi = tz->ts_count - 1;
@@ -144,8 +157,8 @@ struct tm *localtime_rz(struct time_zone* restrict tz, time_t const *restrict ts
     tm->tm_zone = tz->desig + offset->desig;
 
     // If the year overflowed/underflowed then indicate an error.
-    if (year < INT32_MIN || year > INT32_MAX) {
-        errno = ERANGE;
+    if (year - base_year < INT32_MIN || year - base_year > INT32_MAX) {
+        errno = EOVERFLOW;
         return NULL;
     }
 
