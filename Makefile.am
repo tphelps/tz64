@@ -4,6 +4,8 @@ check_PROGRAMS = \
 	test-endpoints \
 	test-localtime
 
+TESTS = $(check_PROGRAMS)
+
 libtz64_a_SOURCES = \
 	tz.h tz.c \
 	tzfile.h tzfile.c
