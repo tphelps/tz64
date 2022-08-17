@@ -121,8 +121,10 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
 
 struct tm *localtime_rz(const struct time_zone* restrict tz, time_t const *restrict ts, struct tm *restrict tm)
 {
+    int64_t t = *ts;
+
     // Don't even bother if we know the year will overflow 32 bits.
-    if (*ts < min_tm_ts || *ts > max_tm_ts) {
+    if (t < min_tm_ts || t > max_tm_ts) {
         errno = EOVERFLOW;
         return NULL;
     }
@@ -132,7 +134,7 @@ struct tm *localtime_rz(const struct time_zone* restrict tz, time_t const *restr
     uint32_t lo = 0, hi = tz->ts_count - 1;
     while (lo < hi) {
         uint32_t i = (lo + hi + 1) / 2;
-        if (tz->timestamps[i] <= *ts) {
+        if (tz->timestamps[i] <= t) {
             lo = i;
         } else {
             hi = i - 1;
@@ -142,7 +144,7 @@ struct tm *localtime_rz(const struct time_zone* restrict tz, time_t const *restr
 
     // Fill in the tm with the timestamp adjusted by the offset.
     const struct tz_offset *offset = &tz->offsets[tz->offset_map[i]];
-    int64_t year = ts_to_tm_utc(tm, *ts + offset->utoff);
+    int64_t year = ts_to_tm_utc(tm, t + offset->utoff);
 
     // Fill in the remaining fields from the offset.
     tm->tm_isdst = offset->isdst;
