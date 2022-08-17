@@ -50,6 +50,20 @@ static void assert_tm_eq(const struct tm *expected, const struct tm *actual)
 }
 
 
+static void check_ts(const struct time_zone *tz, time_t ts)
+{
+    struct tm ref_tm;
+    memset(&ref_tm, 0, sizeof(ref_tm));
+    assert(localtime_r(&ts, &ref_tm) == &ref_tm);
+
+    struct tm test_tm;
+    memset(&test_tm, 0, sizeof(test_tm));
+    assert(localtime_rz(tz, &ts, &test_tm) == &test_tm);
+
+    assert_tm_eq(&ref_tm, &test_tm);
+}
+
+
 static void check_tz(const char *name)
 {
     // Set the time zone.
@@ -63,25 +77,9 @@ static void check_tz(const char *name)
     // Loop through the time zone transitions and check the second of
     // and the second before each.
     for (uint32_t i = 1; i < tz->ts_count; i++) {
-        int64_t ts = tz->timestamps[i] - 1;
-
-        struct tm ref_tm;
-        memset(&ref_tm, 0, sizeof(ref_tm));
-        assert(localtime_r(&ts, &ref_tm) == &ref_tm);
-
-        struct tm test_tm;
-        memset(&test_tm, 0, sizeof(test_tm));
-        assert(localtime_rz(tz, &ts, &test_tm) == &test_tm);
-
-        assert_tm_eq(&ref_tm, &test_tm);
-
-
-        ts = tz->timestamps[i];
-        memset(&ref_tm, 0, sizeof(ref_tm));
-        assert(localtime_r(&ts, &ref_tm) == &ref_tm);
-        memset(&test_tm, 0, sizeof(test_tm));
-        assert(localtime_rz(tz, &ts, &test_tm) == &test_tm);
-        assert_tm_eq(&ref_tm, &test_tm);
+        int64_t ts = tz->timestamps[i];
+        check_ts(tz, ts - 1);
+        check_ts(tz, ts);
     }
 }
 
