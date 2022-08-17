@@ -157,7 +157,7 @@ static struct time_zone *process_tzfile(const char *path, const char *data, off_
     timestamps[0] = INT64_MIN;
     for (uint32_t i = 0; i < header.timecnt; i++) {
         int64_t ts;
-        memcpy(&ts, data, sizeof(tz));
+        memcpy(&ts, data, sizeof(ts));
         data += sizeof(ts);
         ts = be64toh(ts);
 
