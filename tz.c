@@ -126,7 +126,7 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
 }
 
 
-struct tm *localtime_rz(struct time_zone* restrict tz, time_t const *restrict ts, struct tm *restrict tm)
+struct tm *localtime_rz(const struct time_zone* restrict tz, time_t const *restrict ts, struct tm *restrict tm)
 {
     // Don't even bother if we know the year will overflow 32 bits.
     if (*ts < min_tm_ts || *ts > max_tm_ts) {
