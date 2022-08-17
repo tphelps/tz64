@@ -1,10 +1,16 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <time.h>
 #include <string.h>
 #include <assert.h>
+#include <unistd.h>
 #include "tz.h"
 #include "tzfile.h"
+
+
+static const char *progname;
+static bool exhaustive;
 
 static const char *tz_names[] = {
     "America/Adak",
@@ -34,6 +40,21 @@ static const char *tz_names[] = {
 };
 
 
+static void set_progname(const char *arg0)
+{
+    const char *p = strrchr(arg0, '/');
+    progname = (p != NULL) ? p + 1 : arg0;
+}
+
+
+static void usage()
+{
+    fprintf(stderr, "usage: %s [-t timezone] [-x]\n", progname);
+    fprintf(stderr, "    -t timezone    test only timezone\n");
+    fprintf(stderr, "    -x             do exhaustive testing\n");
+}
+
+
 static void assert_tm_eq(const struct tm *expected, const struct tm *actual)
 {
     assert(actual->tm_sec == expected->tm_sec);
@@ -50,7 +71,7 @@ static void assert_tm_eq(const struct tm *expected, const struct tm *actual)
 }
 
 
-static void check_ts(const struct time_zone *tz, time_t ts)
+static int check_ts(const struct time_zone *tz, time_t ts)
 {
     struct tm ref_tm;
     memset(&ref_tm, 0, sizeof(ref_tm));
@@ -61,6 +82,7 @@ static void check_ts(const struct time_zone *tz, time_t ts)
     assert(localtime_rz(tz, &ts, &test_tm) == &test_tm);
 
     assert_tm_eq(&ref_tm, &test_tm);
+    return test_tm.tm_year + 1900;
 }
 
 
@@ -74,19 +96,63 @@ static void check_tz(const char *name)
     struct time_zone *tz = tzalloc(name);
     assert(tz != NULL);
 
-    // Loop through the time zone transitions and check the second of
-    // and the second before each.
-    for (uint32_t i = 1; i < tz->ts_count; i++) {
-        int64_t ts = tz->timestamps[i];
-        check_ts(tz, ts - 1);
-        check_ts(tz, ts);
+    if (exhaustive) {
+        printf("%s:", name);
+        fflush(stdout);
+
+        int prev = 0;
+        for (time_t ts = -2208988800; ts < 2145916800; ts++) {
+            int year = check_ts(tz, ts);
+            if (prev != year) {
+                printf(" %d", year);
+                fflush(stdout);
+                prev = year;
+            }
+        }
+    } else {
+        // Loop through the time zone transitions and check the second of
+        // and the second before each.
+        for (uint32_t i = 1; i < tz->ts_count; i++) {
+            int64_t ts = tz->timestamps[i];
+            check_ts(tz, ts - 1);
+            check_ts(tz, ts);
+        }
     }
+
+    tzfree(tz);
 }
 
 
 int main(int argc, char *argv[])
 {
-    for (int i = 0; tz_names[i] != NULL; i++) {
-        check_tz(tz_names[i]);
+    set_progname (argv[0]);
+
+    const char *tz = NULL;
+    int choice;
+    while ((choice = getopt(argc, argv, "t:x")) != -1) {
+        switch (choice) {
+        case 't':
+            tz = optarg;
+            break;
+
+        case 'x':
+            exhaustive = true;
+            break;
+
+        case '?':
+            usage();
+            exit(1);
+
+        default:
+            abort();
+        }
+    }
+
+    if (tz != NULL) {
+        check_tz(tz);
+    } else {
+        for (int i = 0; tz_names[i] != NULL; i++) {
+            check_tz(tz_names[i]);
+        }
     }
 }
