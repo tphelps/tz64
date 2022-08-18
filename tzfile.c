@@ -27,7 +27,7 @@ static const int64_t utc_timestamps[1] = { INT64_MIN };
 static const struct tz_offset utc_offsets[1] = { { 0, 0, 0 } };
 static const uint8_t utc_offset_map[1] = { 0 };
 
-struct time_zone tz_utc = {
+struct tz64 tz_utc = {
     .ts_count = 1,
     .leap_count = 0,
     .timestamps = utc_timestamps,
@@ -62,7 +62,7 @@ void tz_header_fix_endian(struct tz_header *header)
 }
 
 
-static struct time_zone *process_tzfile(const char *path, const char *data, off_t size)
+static struct tz64 *process_tzfile(const char *path, const char *data, off_t size)
 {
     const char *end = data + size;
 
@@ -125,7 +125,7 @@ static struct time_zone *process_tzfile(const char *path, const char *data, off_
 
     // Allocate memory for the v2 data.
     size_t block_size =
-        sizeof(struct time_zone) +
+        sizeof(struct tz64) +
         (header.timecnt + 1) * sizeof(int64_t) +
         header.typecnt * sizeof(struct tz_offset) +
         header.leapcnt * sizeof(struct tz_leap) +
@@ -137,8 +137,8 @@ static struct time_zone *process_tzfile(const char *path, const char *data, off_
         return NULL;
     }
 
-    struct time_zone *tz = (struct time_zone *)block;
-    block += sizeof(struct time_zone);
+    struct tz64 *tz = (struct tz64 *)block;
+    block += sizeof(struct tz64);
 
     // Set up pointers to the various fields.
     int64_t *timestamps = (int64_t *)block;
@@ -264,7 +264,7 @@ err:
 }
 
 
-static int load_tz(struct time_zone **tz_out, const char *path)
+static int load_tz(struct tz64 **tz_out, const char *path)
 {
     // Open the file.
     int fd = open(path, O_RDONLY);
@@ -302,14 +302,14 @@ static int load_tz(struct time_zone **tz_out, const char *path)
 }
 
 
-static struct time_zone *make_utc()
+static struct tz64 *make_utc()
 {
-    struct time_zone *tz = malloc(sizeof(struct time_zone));
+    struct tz64 *tz = malloc(sizeof(struct tz64));
     if (tz == NULL) {
         return tz;
     }
 
-    memcpy(tz, &tz_utc, sizeof(struct time_zone));
+    memcpy(tz, &tz_utc, sizeof(struct tz64));
     return tz;
 }
 
@@ -335,10 +335,10 @@ static char *mkpath(char *buffer, size_t buflen, const char *rest)
 }
 
 
-struct time_zone *tzalloc(const char *tz_desc)
+struct tz64 *tzalloc(const char *tz_desc)
 {
     char pathbuf[256];
-    struct time_zone *tz;
+    struct tz64 *tz;
 
     // NULL indicates localtime.
     if (tz_desc == NULL) {
@@ -394,7 +394,7 @@ struct time_zone *tzalloc(const char *tz_desc)
 }
 
 
-void tzfree(struct time_zone *tz)
+void tzfree(struct tz64 *tz)
 {
     free(tz);
 }

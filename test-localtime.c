@@ -8,7 +8,7 @@
 int main(int argc, char *argv[])
 {
     // Load a few time zones.
-    struct time_zone *tz_new_york, *tz_melbourne, *tz_hong_kong, *tz_london;
+    struct tz64 *tz_new_york, *tz_melbourne, *tz_hong_kong, *tz_london;
     tz_new_york = tzalloc("America/New_York");
     assert(tz_new_york != NULL);
     tz_melbourne = tzalloc("Australia/Melbourne");

@@ -119,7 +119,7 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
 }
 
 
-struct tm *localtime_rz(const struct time_zone* restrict tz, time_t const *restrict ts, struct tm *restrict tm)
+struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict ts, struct tm *restrict tm)
 {
     int64_t t = *ts;
 

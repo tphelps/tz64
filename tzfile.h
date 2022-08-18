@@ -26,7 +26,7 @@ struct tz_leap {
 };
 
 
-struct time_zone {
+struct tz64 {
     uint32_t ts_count;
     uint32_t leap_count;
     const int64_t *timestamps;

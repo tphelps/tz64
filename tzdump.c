@@ -415,7 +415,7 @@ static void dump_raw_file(const char *path)
 static void dump_cooked_file(const char *path)
 {
     // Load the file.
-    struct time_zone *tz = tzalloc(path);
+    struct tz64 *tz = tzalloc(path);
     if (tz == NULL) {
         fprintf(stderr, "%s: error: failed to load TZ file %s: %s\n", progname, path, strerror(errno));
         return;

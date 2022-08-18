@@ -71,7 +71,7 @@ static void assert_tm_eq(const struct tm *expected, const struct tm *actual)
 }
 
 
-static int check_ts(const struct time_zone *tz, time_t ts)
+static int check_ts(const struct tz64 *tz, time_t ts)
 {
     struct tm ref_tm;
     memset(&ref_tm, 0, sizeof(ref_tm));
@@ -93,7 +93,7 @@ static void check_tz(const char *name)
     tzset();
 
     // Load it the hard way.
-    struct time_zone *tz = tzalloc(name);
+    struct tz64 *tz = tzalloc(name);
     assert(tz != NULL);
 
     if (exhaustive) {
