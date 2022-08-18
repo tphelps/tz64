@@ -73,16 +73,69 @@ static void assert_tm_eq(const struct tm *expected, const struct tm *actual)
 
 static int check_ts(const struct tz64 *tz, time_t ts)
 {
+    // Convert the ts to a struct tm with localtime_r
     struct tm ref_tm;
     memset(&ref_tm, 0, sizeof(ref_tm));
     assert(localtime_r(&ts, &ref_tm) == &ref_tm);
 
+    // And then with tz64
     struct tm test_tm;
     memset(&test_tm, 0, sizeof(test_tm));
     assert(localtime_rz(tz, &ts, &test_tm) == &test_tm);
 
+    // Make sure they produce the same result.
     assert_tm_eq(&ref_tm, &test_tm);
-    return test_tm.tm_year + 1900;
+    int year = test_tm.tm_year + 1900;
+
+    // Convert back to a timestamp.
+    time_t test_ts = mktime_z(tz, &test_tm);
+    if (test_ts == ts) {
+        return year;
+    }
+
+    // If the times don't match then see if mktime produces the
+    // same result.
+    time_t ref_ts = mktime(&test_tm);
+    if (test_ts == ref_ts) {
+        return year;
+    }
+
+    // And mktime sometimes cheats.  Try pushing it a day later and
+    // back.
+    test_tm.tm_mday++;
+    (void)mktime(&test_tm);
+    test_tm.tm_mday--;
+    ref_ts = mktime(&test_tm);
+
+    // It had better match now.
+    if (test_ts == ref_ts) {
+        putchar(':');
+        fflush(stdout);
+        return year;
+    }
+
+    // Try pushing it back a day and forward.
+    test_tm.tm_mday--;
+    (void)mktime(&test_tm);
+    test_tm.tm_mday++;
+    ref_ts = mktime(&test_tm);
+
+    // It had better match now.
+    if (test_ts == ref_ts) {
+        putchar('#');
+        fflush(stdout);
+        return year;
+    }
+
+    printf("%" PRId64 " -> %" PRId64 " (%" PRId64 ")\n", ts, test_ts, ref_ts);
+    printf("%04d-%02d-%02d %02d:%02d:%02d\n",
+           ref_tm.tm_year + 1900,
+           ref_tm.tm_mon + 1,
+           ref_tm.tm_mday,
+           ref_tm.tm_hour,
+           ref_tm.tm_min,
+           ref_tm.tm_sec);
+    abort();
 }
 
 

@@ -11,6 +11,7 @@ static const int64_t secs_per_day = hours_per_day * secs_per_hour;
 
 static const int64_t days_per_week = 7;
 static const int64_t days_per_nyear = 365;
+static const int64_t secs_per_nyear = days_per_nyear * secs_per_day;
 
 static const int64_t days_per_4_nyears = 4 * days_per_nyear + 1;
 static const int64_t days_per_ncentury = 100 * days_per_nyear + 100 / 4 - 1;
@@ -119,6 +120,60 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
 }
 
 
+static int64_t tm_utc_to_ts(const struct tm *tm)
+{
+    int64_t ts = alt_ref_ts;
+    ts += tm->tm_sec;
+    ts += tm->tm_min * secs_per_min;
+    ts += tm->tm_hour * secs_per_hour;
+    ts += tm->tm_yday * secs_per_day;
+
+    int64_t year = tm->tm_year + base_year - alt_ref_year;
+    int64_t block = year / 400;
+    year %= 400;
+    if (year < 0) {
+        year += 400;
+        block -= 1;
+    }
+
+    ts += secs_per_400_years * block;
+    ts += secs_per_nyear * year + secs_per_day * (year / 4 - year / 100);
+    return ts;
+}
+
+
+static uint32_t find_fwd_offset(const struct tz64* restrict tz, int64_t ts)
+{
+    uint32_t lo = 0, hi = tz->ts_count - 1;
+    while (lo < hi) {
+        uint32_t i = (lo + hi + 1) / 2;
+        if (tz->timestamps[i] <= ts) {
+            lo = i;
+        } else {
+            hi = i - 1;
+        }
+    }
+
+    return lo;
+}
+
+
+static uint32_t find_rev_offset(const struct tz64* restrict tz, int64_t ts)
+{
+    uint32_t lo = 0, hi = tz->ts_count - 1;
+    while (lo < hi) {
+        uint32_t i = (lo + hi + 1) / 2;
+        if (tz->timestamps[i] <= ts - tz->offsets[tz->offset_map[i]].utoff) {
+            lo = i;
+        } else {
+            hi = i - 1;
+        }
+    }
+
+    return lo;
+}
+
+
 struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict ts, struct tm *restrict tm)
 {
     int64_t t = *ts;
@@ -130,17 +185,8 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
     }
 
     // Do a binary search to find the index of latest timestamp no
-    // later than ts.    
-    uint32_t lo = 0, hi = tz->ts_count - 1;
-    while (lo < hi) {
-        uint32_t i = (lo + hi + 1) / 2;
-        if (tz->timestamps[i] <= t) {
-            lo = i;
-        } else {
-            hi = i - 1;
-        }
-    }
-    uint32_t i = lo;
+    // later than ts.
+    uint32_t i = find_fwd_offset(tz, t);
 
     // Fill in the tm with the timestamp adjusted by the offset.
     const struct tz_offset *offset = &tz->offsets[tz->offset_map[i]];
@@ -160,3 +206,133 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
     return tm;
 }
 
+
+static void clamp(int *value, int64_t *overflow, int max)
+{
+    *overflow += *value;
+    int v = *value % max;
+    *overflow /= max;
+    if (v < 0) {
+        v += max;
+        *overflow -= 1;
+    }
+}
+
+
+static int64_t canonicalize_tm(struct tm *tm)
+{
+    // Convert to the time to canonical form.
+    int64_t overflow = 0;
+    clamp(&tm->tm_sec, &overflow, secs_per_min);
+    clamp(&tm->tm_min, &overflow, mins_per_hour);
+    clamp(&tm->tm_hour, &overflow, hours_per_day);
+
+    // Add the overflow to the day of the month.
+    int64_t days = tm->tm_mday + overflow - 1;
+
+    // Limit that to no more than 400 days.
+    int64_t year = tm->tm_year + base_year + (overflow / days_per_400_years) * 400;
+    days %= days_per_400_years;
+    if (days < 0) {
+        days += days_per_400_years;
+        year -= 400;
+    }
+
+    // Convert excess months to years.
+    overflow = 0;
+    clamp(&tm->tm_mon, &overflow, 12);
+    year += overflow;
+    int leap = is_leap(year);
+    days += month_starts[leap][tm->tm_mon];
+
+    // We have at most 400 extra years of days.  Convert those to
+    // years in chunks where possible.
+    while (days > days_per_nyear + leap) {
+        if (days >= days_per_ncentury + leap && year / 400 == 0) {
+            days -= days_per_ncentury + leap;
+            year += 100;
+        } else if (days >= days_per_4_nyears * 5 + leap && year / 20 == 0) {
+            days -= days_per_4_nyears * 5 + leap;
+            year += 20;
+        } else if (days >= days_per_4_nyears + leap && year / 4 == 0) {
+            days -= days_per_4_nyears + leap;
+            year += 4;
+        } else {
+            days -= days_per_nyear + leap;
+            year += 1;
+        }
+        leap = is_leap(year);
+    }
+
+    // Record the day of the year.
+    tm->tm_yday = days;
+    tm->tm_year = year - base_year;
+
+    // Figure out which month that is.
+    int month = days / 32;
+    if (month_starts[leap][month + 1] <= days) {
+        month++;
+    }
+
+    // Calculate month and mday.
+    tm->tm_mon = month;
+    tm->tm_mday = days - month_starts[leap][month] + 1;
+
+    // Figure out the day of the week.
+    int64_t yr = (year - alt_ref_year) % 400;
+    if (yr < 0) {
+        yr += 400;
+    }
+    days += yr * days_per_nyear + yr / 4 - yr / 100;
+    tm->tm_wday = (days + 1) % days_per_week;
+
+    return year;
+}
+
+
+time_t mktime_z(const struct tz64 *tz, struct tm *tm)
+{
+    // Try to convert tm to canonical form.  If the tm overflows then
+    // return -1.
+    int64_t year = canonicalize_tm(tm);
+    if (year - base_year != tm->tm_year) {
+        return -1;
+    }
+
+    // Convert that to a timestamp as if it were UTC.
+    int64_t ts = tm_utc_to_ts(tm);
+
+    // Do a binary search to find the latest offset that could
+    // correspond to ts.
+    uint32_t i = find_rev_offset(tz, ts);
+
+    // If the offset's DST indicator doesn't match then try an
+    // adjacent offset.
+    if (tm->tm_isdst >= 0 && !tm->tm_isdst != !tz->offsets[tz->offset_map[i]].isdst) {
+        if (i > 0 && !tm->tm_isdst == !tz->offsets[tz->offset_map[i - 1]].isdst &&
+            ts - tz->offsets[tz->offset_map[i - 1]].utoff < tz->timestamps[i]) {
+            // The previous offset's DST indicator matches and the
+            // timestamp can fall into that offset's range so use it.
+            i--;
+        } else if (i + 1 < tz->ts_count && !tm->tm_isdst == !tz->offsets[tz->offset_map[i + 1]].isdst &&
+                   ts - tz->offsets[tz->offset_map[i]].utoff >= tz->timestamps[i + 1]) {
+            // The next offset's DST indicator matches and the
+            // timestamp falls betweeo the current and next range, so
+            // use the next one.
+            i++;
+        }
+    }
+
+    // Fill in the remaining tm fields.
+    const struct tz_offset *offset = &tz->offsets[tz->offset_map[i]];
+    tm->tm_isdst = offset->isdst;
+    tm->tm_gmtoff = offset->utoff;
+    tm->tm_zone = tz->desig + offset->desig;
+
+    ts -= offset->utoff;
+    if (sizeof(time_t) == sizeof(int32_t) && (ts < INT32_MIN || ts > INT32_MAX)) {
+        return -1;
+    }
+
+    return ts;
+}
