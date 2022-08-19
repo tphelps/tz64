@@ -210,10 +210,10 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
 static void clamp(int *value, int64_t *overflow, int max)
 {
     *overflow += *value;
-    int v = *value % max;
+    *value = *overflow % max;
     *overflow /= max;
-    if (v < 0) {
-        v += max;
+    if (*value < 0) {
+        *value += max;
         *overflow -= 1;
     }
 }
@@ -248,14 +248,14 @@ static int64_t canonicalize_tm(struct tm *tm)
     // We have at most 400 extra years of days.  Convert those to
     // years in chunks where possible.
     while (days > days_per_nyear + leap) {
-        if (days >= days_per_ncentury + leap && year / 400 == 0) {
+        if (days >= days_per_ncentury + leap && year % 100 == 0) {
             days -= days_per_ncentury + leap;
             year += 100;
-        } else if (days >= days_per_4_nyears * 5 + leap && year / 20 == 0) {
-            days -= days_per_4_nyears * 5 + leap;
+        } else if (days >= days_per_nyear * 20 + 4 + leap && year % 20 == 0) {
+            days -= days_per_nyear * 20 + 4 + leap;
             year += 20;
-        } else if (days >= days_per_4_nyears + leap && year / 4 == 0) {
-            days -= days_per_4_nyears + leap;
+        } else if (days >= days_per_nyear * 4 + leap && year % 4 == 0) {
+            days -= days_per_nyear * 4 + leap;
             year += 4;
         } else {
             days -= days_per_nyear + leap;

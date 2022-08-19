@@ -148,4 +148,21 @@ int main(int argc, char *argv[])
     assert(tm.tm_isdst == 0);
     assert(tm.tm_gmtoff == -5 * 60 * 60);
     assert(strcmp(tm.tm_zone, "EST") == 0);
+
+    // Set up a tm based on seconds.
+    ts = 1660912736;
+    init_tm(&tm, 1970, 1, 1, 0, 0, 0, -1);
+    tm.tm_sec = ts + 10 * 60 * 60;
+    assert(mktime_z(tz_melbourne, &tm) == ts);
+    assert(tm.tm_sec == 56);
+    assert(tm.tm_min == 38);
+    assert(tm.tm_hour == 22);
+    assert(tm.tm_mday == 19);
+    assert(tm.tm_mon == 8 - 1);
+    assert(tm.tm_year == 2022 - 1900);
+    assert(tm.tm_wday == 5);
+    assert(tm.tm_yday == 231 - 1);
+    assert(tm.tm_isdst == 0);
+    assert(tm.tm_gmtoff == 10 * 60 * 60);
+    assert(strcmp(tm.tm_zone, "AEST") == 0);
 }
