@@ -149,6 +149,74 @@ int main(int argc, char *argv[])
     assert(tm.tm_gmtoff == -5 * 60 * 60);
     assert(strcmp(tm.tm_zone, "EST") == 0);
 
+    // Try an ambiguous time.  New York fell back on 2012-11-04 at one
+    // second after 1:59:59, so let's try 1:30:00 when it was DST
+    ts = 1352008800 - 1800;
+    init_tm(&tm, 2012, 11, 4, 1, 30, 0, 1);
+    assert(mktime_z(tz_new_york, &tm) == ts);
+    assert(tm.tm_sec == 0);
+    assert(tm.tm_min == 30);
+    assert(tm.tm_hour == 1);
+    assert(tm.tm_mday == 4);
+    assert(tm.tm_mon == 11 - 1);
+    assert(tm.tm_year == 2012 - 1900);
+    assert(tm.tm_wday == 0);
+    assert(tm.tm_yday == 309 - 1);
+    assert(tm.tm_isdst == 1);
+    assert(tm.tm_gmtoff == -4 * 60 * 60);
+    assert(strcmp(tm.tm_zone, "EDT") == 0);
+
+    // Repeat with standard time.
+    ts = 1352008800 + 1800;
+    init_tm(&tm, 2012, 11, 4, 1, 30, 0, 0);
+    assert(mktime_z(tz_new_york, &tm) == ts);
+    assert(tm.tm_sec == 0);
+    assert(tm.tm_min == 30);
+    assert(tm.tm_hour == 1);
+    assert(tm.tm_mday == 4);
+    assert(tm.tm_mon == 11 - 1);
+    assert(tm.tm_year == 2012 - 1900);
+    assert(tm.tm_wday == 0);
+    assert(tm.tm_yday == 309 - 1);
+    assert(tm.tm_isdst == 0);
+    assert(tm.tm_gmtoff == -5 * 60 * 60);
+    assert(strcmp(tm.tm_zone, "EST") == 0);
+
+    // Try a non-existent time.  New York sprang forward on 2012-03-11
+    // at 1 second after 01:59:59.  Try 02:30:00.  An hour after
+    // 01:30:00 EST would be 03:30:00 EDT.
+    ts = 1331449200 + 1800;
+    init_tm(&tm, 2012, 3, 11, 2, 30, 0, 0);
+    assert(mktime_z(tz_new_york, &tm) == ts);
+    assert(tm.tm_sec == 0);
+    assert(tm.tm_min == 30);
+    assert(tm.tm_hour == 3);
+    assert(tm.tm_mday == 11);
+    assert(tm.tm_mon == 3 - 1);
+    assert(tm.tm_year == 2012 - 1900);
+    assert(tm.tm_wday == 0);
+    assert(tm.tm_yday == 71 - 1);
+    assert(tm.tm_isdst == 1);
+    assert(tm.tm_gmtoff == -4 * 60 * 60);
+    assert(strcmp(tm.tm_zone, "EDT") == 0);
+
+    // Repeat but with the DST indicator indicating an hour before
+    // 03:30:00 EDT.
+    ts = 1331449200 - 1800;
+    init_tm(&tm, 2012, 3, 11, 2, 30, 0, 1);
+    assert(mktime_z(tz_new_york, &tm) == ts);
+    assert(tm.tm_sec == 0);
+    assert(tm.tm_min == 30);
+    assert(tm.tm_hour == 1);
+    assert(tm.tm_mday == 11);
+    assert(tm.tm_mon == 3 - 1);
+    assert(tm.tm_year == 2012 - 1900);
+    assert(tm.tm_wday == 0);
+    assert(tm.tm_yday == 71 - 1);
+    assert(tm.tm_isdst == 0);
+    assert(tm.tm_gmtoff == -5 * 60 * 60);
+    assert(strcmp(tm.tm_zone, "EST") == 0);
+
     // Set up a tm based on seconds.
     ts = 1660912736;
     init_tm(&tm, 1970, 1, 1, 0, 0, 0, -1);

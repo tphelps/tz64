@@ -306,30 +306,48 @@ time_t mktime_z(const struct tz64 *tz, struct tm *tm)
     // correspond to ts.
     uint32_t i = find_rev_offset(tz, ts);
 
-    // If the offset's DST indicator doesn't match then try an
-    // adjacent offset.
-    if (tm->tm_isdst >= 0 && !tm->tm_isdst != !tz->offsets[tz->offset_map[i]].isdst) {
-        if (i > 0 && !tm->tm_isdst == !tz->offsets[tz->offset_map[i - 1]].isdst &&
-            ts - tz->offsets[tz->offset_map[i - 1]].utoff < tz->timestamps[i]) {
-            // The previous offset's DST indicator matches and the
-            // timestamp can fall into that offset's range so use it.
-            i--;
-        } else if (i + 1 < tz->ts_count && !tm->tm_isdst == !tz->offsets[tz->offset_map[i + 1]].isdst &&
-                   ts - tz->offsets[tz->offset_map[i]].utoff >= tz->timestamps[i + 1]) {
-            // The next offset's DST indicator matches and the
-            // timestamp falls betweeo the current and next range, so
-            // use the next one.
+    // Cope with problematic timestamps.
+    if (i + 1 < tz->ts_count && ts - tz->offsets[tz->offset_map[i]].utoff >= tz->timestamps[i + 1]) {
+        // The time stamp is both after this offset's range and before
+        // the next one: it's not a real time.  If the DST indicator
+        // matches this one then we assume that something was added to
+        // to a valid struct tm to push it into the next; otherwise
+        // we'll assume subtraction from the next.
+        if (tm->tm_isdst >= 0 && !tm->tm_isdst == !tz->offsets[tz->offset_map[i]].isdst &&
+            !tm->tm_isdst != !tz->offsets[tz->offset_map[i + 1]].isdst) {
+            // Adjust the timestamp by the current offset.
+            ts -= tz->offsets[tz->offset_map[i]].utoff;
+
+            // Recompute the broken-down time using the next offset.
+            ts_to_tm_utc(tm, ts + tz->offsets[tz->offset_map[i + 1]].utoff);
             i++;
+        } else {
+            // Adjust the timestamp by the next offset.
+            ts -= tz->offsets[tz->offset_map[i + 1]].utoff;
+
+            // Recompute broken-down time using the current offset.
+            ts_to_tm_utc(tm, ts + tz->offsets[tz->offset_map[i]].utoff);
         }
+    } else {
+        if (tm->tm_isdst >= 0 && !tm->tm_isdst != !tz->offsets[tz->offset_map[i]].isdst &&
+            i > 0 && !tm->tm_isdst == !tz->offsets[tz->offset_map[i - 1]].isdst &&
+            ts - tz->offsets[tz->offset_map[i - 1]].utoff < tz->timestamps[i]) {
+            // The time could belong in either this offset or the previous
+            // one, but the DST indidcators match for the previous one so
+            // use that.
+            i--;
+        }
+
+        ts -= tz->offsets[tz->offset_map[i]].utoff;
     }
 
-    // Fill in the remaining tm fields.
+    // We've chosen our offset.  Use it to fill in the remaining
+    // parts of broken-down time.
     const struct tz_offset *offset = &tz->offsets[tz->offset_map[i]];
     tm->tm_isdst = offset->isdst;
     tm->tm_gmtoff = offset->utoff;
     tm->tm_zone = tz->desig + offset->desig;
 
-    ts -= offset->utoff;
     if (sizeof(time_t) == sizeof(int32_t) && (ts < INT32_MIN || ts > INT32_MAX)) {
         return -1;
     }
