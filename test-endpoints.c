@@ -36,6 +36,29 @@ static const char *tz_names[] = {
     "Europe/Moscow",
     "Europe/Paris",
     "Europe/Zurich",
+    "right/America/Adak",
+    "right/America/Anchorage",
+    "right/America/Anguilla",
+    "right/America/Chicago",
+    "right/America/Denver",
+    "right/America/Los_Angeles",
+    "right/America/Mexico_City",
+    "right/America/New_York",
+    "right/Asia/Hong_Kong",
+    "right/Asia/Singapore",
+    "right/Asia/Taipei",
+    "right/Asia/Tehran",
+    "right/Asia/Tokyo",
+    "right/Australia/Adelaide",
+    "right/Australia/Brisbane",
+    "right/Australia/Melbourne",
+    "right/Australia/Sydney",
+    "right/Europe/Amsterdam",
+    "right/Europe/Berlin",
+    "right/Europe/London",
+    "right/Europe/Moscow",
+    "right/Europe/Paris",
+    "right/Europe/Zurich",
     NULL
 };
 
@@ -88,14 +111,10 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     int year = test_tm.tm_year + 1900;
 
     // Convert back to a timestamp.
+    time_t ref_ts = mktime(&ref_tm);
     time_t test_ts = mktime_z(tz, &test_tm);
-    if (test_ts == ts) {
-        return year;
-    }
 
-    // If the times don't match then see if mktime produces the
-    // same result.
-    time_t ref_ts = mktime(&test_tm);
+    // See if mktime produces the same result
     if (test_ts == ref_ts) {
         return year;
     }
@@ -154,7 +173,9 @@ static void check_tz(const char *name)
         fflush(stdout);
 
         int prev = 0;
-        for (time_t ts = -2208988800; ts < 2145916800; ts++) {
+        const int64_t start = -2208988800;
+        const int64_t end = 2145916800;
+        for (time_t ts = start; ts <= end; ts++) {
             int year = check_ts(tz, ts);
             if (prev != year) {
                 printf(" %d", year);
@@ -167,6 +188,13 @@ static void check_tz(const char *name)
         // and the second before each.
         for (uint32_t i = 1; i < tz->ts_count; i++) {
             int64_t ts = tz->timestamps[i];
+            check_ts(tz, ts - 1);
+            check_ts(tz, ts);
+        }
+
+        // Repeat for leap second transitions.
+        for (uint32_t i = 1; i < tz->leap_count; i++) {
+            int64_t ts = tz->leap_ts[i];
             check_ts(tz, ts - 1);
             check_ts(tz, ts);
         }
