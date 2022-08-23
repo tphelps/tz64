@@ -446,11 +446,11 @@ static void dump_cooked_file(const char *path)
 
     if (tz->leap_count != 0) {
         printf("-- leap seconds --\n");
-        for (uint32_t i = 0; i < tz->leap_count; i++) {
-            printf("%u: %" PRId64 " (%s): %d\n",
-                   i, tz->leaps[i].timestamp,
-                   format_utc(tz->leaps[i].timestamp),
-                   tz->leaps[i].secs);
+        for (uint32_t i = 1; i < tz->leap_count; i++) {
+            printf("%2u: %" PRId64 " (%s): %d\n",
+                   i, tz->leap_ts[i],
+                   format_utc(tz->leap_ts[i]),
+                   tz->leap_secs[i]);
         }
     }
     

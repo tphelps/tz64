@@ -20,11 +20,6 @@ struct tz_offset {
     uint32_t desig:8;
 };
 
-struct tz_leap {
-    int64_t timestamp;
-    int32_t secs;
-};
-
 
 struct tz64 {
     uint32_t ts_count;
@@ -32,7 +27,8 @@ struct tz64 {
     const int64_t *timestamps;
     const uint8_t *offset_map;
     const struct tz_offset *offsets;
-    const struct tz_leap *leaps;
+    const int64_t *leap_ts;
+    const int32_t *leap_secs;
     const char *desig;
     const char *tz;
 };
