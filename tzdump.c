@@ -44,6 +44,38 @@ static const char *format_utc(time_t t)
 }
 
 
+static const char *format_leap(time_t t)
+{
+    static char buffer[32];
+
+    struct tm tm;
+    time_t adj = (t % 60) == 0 ? 1 : 0;
+    t -= adj;
+
+    if (gmtime_r(&t, &tm) == NULL) {
+        snprintf(buffer, sizeof(buffer), "<out of range>");
+    } else {
+        tm.tm_sec += adj;
+        strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+    }
+    return buffer;
+}
+
+
+static const char *format_localtime(const struct tz64 *tz, time_t t)
+{
+    static char buffer[32];
+
+    struct tm tm;
+    if (localtime_rz(tz, &t, &tm) == NULL) {
+        snprintf(buffer, sizeof(buffer), "<out of range>");
+    } else {
+        strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
+    }
+    return buffer;
+}
+
+
 static const char *format_offset(int32_t offset)
 {
     static char buffer[16];
@@ -434,7 +466,7 @@ static void dump_cooked_file(const char *path)
         offset = &tz->offsets[tz->offset_map[i]];
         printf("%3u: %11" PRId64 " (%s)/%u (%s %s %s)\n",
                i - 1, tz->timestamps[i],
-               format_utc(tz->timestamps[i]),
+               format_localtime(tz, tz->timestamps[i]),
                tz->offset_map[i],
                format_offset(offset->utoff),
                tz->desig + offset->desig,
@@ -447,9 +479,9 @@ static void dump_cooked_file(const char *path)
     if (tz->leap_count != 0) {
         printf("-- leap seconds --\n");
         for (uint32_t i = 1; i < tz->leap_count; i++) {
-            printf("%2u: %" PRId64 " (%s): %d\n",
+            printf("%2u: %11" PRId64 " (%s): %d\n",
                    i, tz->leap_ts[i],
-                   format_utc(tz->leap_ts[i]),
+                   format_leap(tz->leap_ts[i] - tz->leap_secs[i] + 1),
                    tz->leap_secs[i]);
         }
     }
