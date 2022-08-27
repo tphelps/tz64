@@ -323,9 +323,12 @@ static int64_t canonicalize_tm(struct tm *tm)
 
 time_t mktime_z(const struct tz64 *tz, struct tm *tm)
 {
-    // Sequester the seconds.
+    // Sequester the seconds when dealing with time zones that support
+    // leap seconds.
     int sec = tm->tm_sec;
-    tm->tm_sec = 0;
+    if (tz->leap_count != 0) {
+        tm->tm_sec = 0;
+    }
 
     // Try to convert tm to canonical form.  If the tm overflows then
     // return -1.
@@ -337,8 +340,14 @@ time_t mktime_z(const struct tz64 *tz, struct tm *tm)
 
     // Convert that to a timestamp as if it were UTC.
     int64_t ts = tm_utc_to_ts(tm);
-    tm->tm_sec = sec;
-    ts += sec;
+
+    // Restore the seconds if necessary.
+    int recalc = 0;
+    if (tz->leap_count != 0) {
+        tm->tm_sec = sec;
+        ts += sec;
+        recalc = (sec < 0 || sec > 59) ? 1 : 0;
+    }
 
     // Adjust for leap seconds.
     const uint32_t li = (tz->leap_count == 0) ? 0 : find_rev_leap(tz, encode_ymdhm(tm));
@@ -350,7 +359,6 @@ time_t mktime_z(const struct tz64 *tz, struct tm *tm)
     uint32_t i = find_rev_offset(tz, ts);
 
     // Cope with problematic timestamps.
-    int recalc = 0;
     if (i + 1 < tz->ts_count && ts - tz->offsets[tz->offset_map[i]].utoff >= tz->timestamps[i + 1]) {
         // The time stamp is both after this offset's range and before
         // the next one: it's not a real time.  If the DST indicator
@@ -385,10 +393,11 @@ time_t mktime_z(const struct tz64 *tz, struct tm *tm)
         ts -= tz->offsets[tz->offset_map[i]].utoff;
     }
 
-    // FIXME: we shouldn't need to do this every time.
-    int extra = (li > 0 && tz->leap_secs[li] == ts);
-    ts_to_tm_utc(tm, ts + tz->offsets[tz->offset_map[i]].utoff - lsec);
-    tm->tm_sec += extra;
+    if (recalc) {
+        int extra = (li < tz->leap_count && tz->leap_ts[li + 1] == ts) ? 1 : 0;
+        ts_to_tm_utc(tm, ts + tz->offsets[tz->offset_map[i]].utoff - lsec - extra);
+        tm->tm_sec += extra;
+    }
 
     // We've chosen our offset.  Use it to fill in the remaining
     // parts of broken-down time.

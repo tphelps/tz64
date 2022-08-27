@@ -116,6 +116,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
 
     // See if mktime produces the same result
     if (test_ts == ref_ts) {
+        assert_tm_eq(&ref_tm, &test_tm);
         return year;
     }
 
@@ -131,6 +132,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     if (test_ts == ref_ts) {
         putchar(':');
         fflush(stdout);
+        assert_tm_eq(&ref_tm, &test_tm);
         return year;
     }
 
@@ -144,6 +146,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     if (test_ts == ref_ts) {
         putchar('#');
         fflush(stdout);
+        assert_tm_eq(&ref_tm, &test_tm);
         return year;
     }
 
