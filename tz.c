@@ -158,12 +158,12 @@ static uint32_t find_fwd_index(const int64_t *timestamps, uint32_t count, int64_
 }
 
 
-static uint32_t find_rev_leap(const struct tz64* restrict tz, int64_t ts)
+static uint32_t find_rev_leap(const struct tz64 *restrict tz, int64_t ymdhm)
 {
     uint32_t lo = 0, hi = tz->leap_count - 1;
     while (lo < hi) {
         uint32_t i = (lo + hi + 1) / 2;
-        if (tz->leap_ts[i] - tz->leap_secs[i] < ts) {
+        if (tz->rev_leap_ts[i] <= ymdhm) {
             lo = i;
         } else {
             hi = i - 1;
@@ -323,15 +323,27 @@ static int64_t canonicalize_tm(struct tm *tm)
 
 time_t mktime_z(const struct tz64 *tz, struct tm *tm)
 {
+    // Sequester the seconds.
+    int sec = tm->tm_sec;
+    tm->tm_sec = 0;
+
     // Try to convert tm to canonical form.  If the tm overflows then
     // return -1.
     int64_t year = canonicalize_tm(tm);
     if (year - base_year != tm->tm_year) {
+        tm->tm_sec = sec;
         return -1;
     }
 
     // Convert that to a timestamp as if it were UTC.
     int64_t ts = tm_utc_to_ts(tm);
+    tm->tm_sec = sec;
+    ts += sec;
+
+    // Adjust for leap seconds.
+    const uint32_t li = (tz->leap_count == 0) ? 0 : find_rev_leap(tz, encode_ymdhm(tm));
+    const int32_t lsec = (li == 0) ? 0 : tz->leap_secs[li];
+    ts += lsec;
 
     // Do a binary search to find the latest offset that could
     // correspond to ts.
@@ -365,7 +377,7 @@ time_t mktime_z(const struct tz64 *tz, struct tm *tm)
             i > 0 && !tm->tm_isdst == !tz->offsets[tz->offset_map[i - 1]].isdst &&
             ts - tz->offsets[tz->offset_map[i - 1]].utoff < tz->timestamps[i]) {
             // The time could belong in either this offset or the previous
-            // one, but the DST indidcators match for the previous one so
+            // one, but the DST indicators match for the previous one so
             // use that.
             i--;
         }
@@ -373,21 +385,10 @@ time_t mktime_z(const struct tz64 *tz, struct tm *tm)
         ts -= tz->offsets[tz->offset_map[i]].utoff;
     }
 
-    // Adjust for leap seconds.
-    int32_t lsec = 0, extra = 0;
-    if (tz->leap_count != 0) {
-        const uint32_t li = find_rev_leap(tz, ts);
-        extra = (tz->leap_ts[li] == ts) ? 1 : 0;
-        lsec = tz->leap_secs[li];
-        recalc = 1;
-    }
-
-    if (recalc) {
-        ts_to_tm_utc(tm, ts + tz->offsets[tz->offset_map[i]].utoff - extra);
-        tm->tm_sec += extra;
-    }
-
-    ts += lsec;
+    // FIXME: we shouldn't need to do this every time.
+    int extra = (li > 0 && tz->leap_secs[li] == ts);
+    ts_to_tm_utc(tm, ts + tz->offsets[tz->offset_map[i]].utoff - lsec);
+    tm->tm_sec += extra;
 
     // We've chosen our offset.  Use it to fill in the remaining
     // parts of broken-down time.

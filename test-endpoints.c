@@ -121,10 +121,11 @@ static int check_ts(const struct tz64 *tz, time_t ts)
 
     // And mktime sometimes cheats.  Try pushing it a day later and
     // back.
-    test_tm.tm_mday++;
-    (void)mktime(&test_tm);
-    test_tm.tm_mday--;
-    ref_ts = mktime(&test_tm);
+    struct tm dup_tm = ref_tm;
+    ref_tm.tm_mday++;
+    (void)mktime(&ref_tm);
+    ref_tm = dup_tm;
+    ref_ts = mktime(&ref_tm);
 
     // It had better match now.
     if (test_ts == ref_ts) {
@@ -133,10 +134,10 @@ static int check_ts(const struct tz64 *tz, time_t ts)
         return year;
     }
 
-    // Try pushing it back a day and forward.
+    // Try pushing it back a day and forward again.
     test_tm.tm_mday--;
-    (void)mktime(&test_tm);
-    test_tm.tm_mday++;
+    (void)mktime(&ref_tm);
+    ref_tm = dup_tm;
     ref_ts = mktime(&test_tm);
 
     // It had better match now.
@@ -197,6 +198,7 @@ static void check_tz(const char *name)
             int64_t ts = tz->leap_ts[i];
             check_ts(tz, ts - 1);
             check_ts(tz, ts);
+            check_ts(tz, ts + 1);
         }
     }
 

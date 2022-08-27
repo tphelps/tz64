@@ -34,6 +34,7 @@ struct tz64 tz_utc = {
     .offsets = utc_offsets,
     .offset_map = utc_offset_map,
     .leap_ts = NULL,
+    .rev_leap_ts = NULL,
     .leap_secs = NULL,
     .desig = "UTC",
     .tz = "UTC0"
@@ -129,7 +130,8 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         sizeof(struct tz64) +
         (header.timecnt + 1) * sizeof(int64_t) +
         header.typecnt * sizeof(struct tz_offset) +
-        header.leapcnt * sizeof(int64_t) +
+        (header.leapcnt + 1) * sizeof(int64_t) +
+        (header.leapcnt + 1) * sizeof(int64_t) +
         header.leapcnt * sizeof(int32_t) +
         header.timecnt + 1 +
         header.charcnt +
@@ -148,9 +150,12 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     struct tz_offset *offsets = (struct tz_offset *)block;
     block += header.typecnt * sizeof(struct tz_offset);
     int64_t *leap_ts = NULL;
+    int64_t *rev_leap_ts = NULL;
     int32_t *leap_secs = NULL;
     if (header.leapcnt != 0) {
         leap_ts = (int64_t *)block;
+        block += (header.leapcnt + 1) * sizeof(int64_t);
+        rev_leap_ts = (int64_t *)block;
         block += (header.leapcnt + 1) * sizeof(int64_t);
         leap_secs = (int32_t *)block;
         block += (header.leapcnt + 1) * sizeof(int32_t);
@@ -215,6 +220,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     // Read the leap second information.
     if (header.leapcnt != 0) {
         leap_ts[0] = INT64_MIN;
+        rev_leap_ts[0] = INT64_MIN;
         leap_secs[0] = 0;
         for (uint32_t i = 0; i < header.leapcnt; i++) {
             int64_t ts;
@@ -268,16 +274,32 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         tz_str[nl - data] = '\0';
     }
 
-    // Populate and the tz itself.
+    // Populate the tz itself, except for the reverse leap seconds.
     tz->ts_count = header.timecnt + 1;
     tz->leap_count = (header.leapcnt == 0) ? 0 : (header.leapcnt + 1);
     tz->timestamps = timestamps;
     tz->offset_map = offset_map;
     tz->leap_ts = leap_ts;
+    tz->rev_leap_ts = NULL;
     tz->leap_secs = leap_secs;
     tz->offsets = offsets;
     tz->desig = desig;
     tz->tz = tz_str;
+
+    // Compute local time for each leap second.
+    for (uint32_t i = 0; i < header.leapcnt; i++) {
+        time_t ts = tz->leap_ts[i + 1] + 1;
+
+        struct tm tm;
+        if (localtime_rz(tz, &ts, &tm) == NULL) {
+            errno = EINVAL;
+            goto err;
+        }
+
+        rev_leap_ts[i + 1] = encode_ymdhm(&tm);
+    }
+
+    tz->rev_leap_ts = rev_leap_ts;
     return tz;
 
 err:
