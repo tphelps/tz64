@@ -19,33 +19,32 @@
 # OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 # WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-noinst_LIBRARIES = libtz64.a
-bin_PROGRAMS = tzdump
+bin_PROGRAMS = tools/tzdump
 check_PROGRAMS = \
-	test-endpoints \
-	test-localtime \
-	test-mktime
+	test/test-endpoints \
+	test/test-localtime \
+	test/test-mktime
 
 TESTS = $(check_PROGRAMS)
 
 include_HEADERS = lib/tz64.h lib/tz64file.h
 
-lib_LIBRARIES = libtz64.a
+lib_LIBRARIES = lib/libtz64.a
 
-libtz64_a_SOURCES = \
+lib_libtz64_a_SOURCES = \
 	lib/tz64.h lib/tz64.c \
 	lib/tz64file.h lib/tz64file.c
 
 AM_CPPFLAGS = -I$(srcdir)/lib
 
-tzdump_SOURCES = tools/tzdump.c
-tzdump_LDADD = libtz64.a
+tools_tzdump_SOURCES = tools/tzdump.c
+tools_tzdump_LDADD = lib/libtz64.a
 
-test_localtime_SOURCES = test/test-localtime.c
-test_localtime_LDADD = libtz64.a
+test_test_localtime_SOURCES = test/test-localtime.c
+test_test_localtime_LDADD = lib/libtz64.a
 
-test_mktime_SOURCES = test/test-mktime.c
-test_mktime_LDADD = libtz64.a
+test_test_mktime_SOURCES = test/test-mktime.c
+test_test_mktime_LDADD = lib/libtz64.a
 
-test_endpoints_SOURCES = test/test-endpoints.c
-test_endpoints_LDADD = libtz64.a
+test_test_endpoints_SOURCES = test/test-endpoints.c
+test_test_endpoints_LDADD = lib/libtz64.a
