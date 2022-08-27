@@ -35,8 +35,8 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <assert.h>
-#include "tz.h"
-#include "tzfile.h"
+#include "tz64.h"
+#include "tz64file.h"
 
 #define MAGIC "TZif"
 #define ZONE_DIR "/usr/share/zoneinfo"

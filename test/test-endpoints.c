@@ -26,8 +26,8 @@
 #include <string.h>
 #include <assert.h>
 #include <unistd.h>
-#include "tz.h"
-#include "tzfile.h"
+#include <tz64.h>
+#include <tz64file.h>
 
 
 static const char *progname;

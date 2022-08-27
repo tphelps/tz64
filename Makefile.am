@@ -28,19 +28,24 @@ check_PROGRAMS = \
 
 TESTS = $(check_PROGRAMS)
 
+include_HEADERS = lib/tz64.h lib/tz64file.h
+
+lib_LIBRARIES = libtz64.a
+
 libtz64_a_SOURCES = \
-	tz.h tz.c \
-	tzfile.h tzfile.c
+	lib/tz64.h lib/tz64.c \
+	lib/tz64file.h lib/tz64file.c
 
+AM_CPPFLAGS = -I$(srcdir)/lib
 
-tzdump_SOURCES = tzdump.c
+tzdump_SOURCES = tools/tzdump.c
 tzdump_LDADD = libtz64.a
 
-test_localtime_SOURCES = test-localtime.c
+test_localtime_SOURCES = test/test-localtime.c
 test_localtime_LDADD = libtz64.a
 
-test_mktime_SOURCES = test-mktime.c
+test_mktime_SOURCES = test/test-mktime.c
 test_mktime_LDADD = libtz64.a
 
-test_endpoints_SOURCES = test-endpoints.c
+test_endpoints_SOURCES = test/test-endpoints.c
 test_endpoints_LDADD = libtz64.a

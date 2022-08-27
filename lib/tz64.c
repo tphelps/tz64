@@ -21,8 +21,8 @@
 
 #include <inttypes.h>
 #include <errno.h>
-#include "tz.h"
-#include "tzfile.h"
+#include "tz64.h"
+#include "tz64file.h"
 
 static const int64_t secs_per_min = 60;
 static const int64_t mins_per_hour = 60;

@@ -29,8 +29,8 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
-#include "tz.h"
-#include "tzfile.h"
+#include <tz64.h>
+#include <tz64file.h>
 
 const char *progname;
 static bool dump_v1_data;

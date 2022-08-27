@@ -24,7 +24,7 @@
 #include <time.h>
 #include <string.h>
 #include <assert.h>
-#include "tz.h"
+#include <tz64.h>
 
 int main(int argc, char *argv[])
 {

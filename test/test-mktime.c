@@ -24,7 +24,7 @@
 #include <time.h>
 #include <string.h>
 #include <assert.h>
-#include "tz.h"
+#include <tz64.h>
 
 static void init_tm(struct tm *tm, int year, int month, int day, int hour, int min, int sec, int isdst)
 {
