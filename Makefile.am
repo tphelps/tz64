@@ -25,6 +25,9 @@ check_PROGRAMS = \
 	test/test-localtime \
 	test/test-mktime
 
+noinst_PROGRAMS = \
+	test/perf-conv
+
 TESTS = $(check_PROGRAMS)
 
 include_HEADERS = lib/tz64.h lib/tz64file.h
@@ -48,3 +51,7 @@ test_test_mktime_LDADD = lib/libtz64.a
 
 test_test_endpoints_SOURCES = test/test-endpoints.c
 test_test_endpoints_LDADD = lib/libtz64.a
+
+test_perf_conv_SOURCES = test/perf-conv.c
+test_perf_conv_LDADD = lib/libtz64.a
+
