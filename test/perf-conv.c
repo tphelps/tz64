@@ -32,14 +32,18 @@ int main(int argc, char *argv[])
 {
     const char *tz_name = NULL;
     unsigned long cycles = 100e6;
-    enum mode mode = MODE_LOCALTIME_R;
+    enum mode mode = MODE_LOCALTIME_RZ;
 
     set_progname(argv[0]);
 
     char *p;
     int choice;
-    while ((choice = getopt(argc, argv, "t:n:uz")) != -1) {
+    while ((choice = getopt(argc, argv, "ct:n:uz")) != -1) {
         switch (choice) {
+        case 'c':
+            mode = MODE_LOCALTIME_R;
+            break;
+
         case 't':
             tz_name = optarg;
             break;
