@@ -31,6 +31,7 @@
 #include <sys/mman.h>
 #include <endian.h>
 #include <string.h>
+#include <ctype.h>
 #include <limits.h>
 #include <fcntl.h>
 #include <errno.h>
@@ -40,9 +41,9 @@
 
 #define MAGIC "TZif"
 #define ZONE_DIR "/usr/share/zoneinfo"
+#define MAX_TZSTR_SIZE 63
 
 extern const char *progname;
-static const size_t max_tz_str_size = 64;
 
 static const int64_t utc_timestamps[1] = { INT64_MIN };
 static const struct tz_offset utc_offsets[1] = { { 0, 0, 0 } };
@@ -58,8 +59,320 @@ struct tz64 tz_utc = {
     .rev_leap_ts = NULL,
     .leap_secs = NULL,
     .desig = "UTC",
-    .tz = "UTC0"
 };
+
+
+
+static int parse_desig(char *buffer, size_t buflen, const char *str)
+{
+    const char *p = str;
+    char *out = buffer;
+    char *end = buffer + buflen - 1;
+
+    if (isalpha(*p)) {
+        do {
+            if (out + 1 < end) {
+                *out++ = *p++;
+            } else {
+                return -1;
+            }
+        } while (isalpha(*p));
+    } else if (*p == '<') {
+        p++;
+        while (isalnum(*p) || *p == '+' || *p == '-') {
+            *out++ = *p++;
+        }
+
+        if (*p++ != '>') {
+            return -1;
+        }
+    } else {
+        return -1;
+    }
+
+    *out = '\0';
+    if (out - buffer < 3) {
+        return -1;
+    }
+    return p - str;
+}
+
+
+static int parse_time(int32_t *time_out, const char *str)
+{
+    const char *p = str;
+
+    int sign = -1;
+    if (*p == '+') {
+        p++;
+    } else if (*p == '-') {
+        sign = 1;
+        p++;
+    }
+
+    if (!isdigit(*p)) {
+        return -1;
+    }
+
+    int hour = *p++ - '0';
+    if (isdigit(*p)) {
+        hour = hour * 10 + *p++ - '0';
+    }
+    if (isdigit(*p)) {
+        hour = hour * 10 + *p++ - '0';
+    }
+    int32_t time = hour * 3600;
+
+    if (*p != ':') {
+        *time_out = sign * time;
+        return p - str;
+    }
+    p++;
+
+    if (!isdigit(*p)) {
+        return -1;
+    }
+
+    int min = *p++ - '0';
+    if (isdigit(*p)) {
+        min = min * 10 + *p++ - '0';
+    }
+    time += min * 60;
+
+    if (*p != ':') {
+        *time_out = sign * time;
+        return p - str;
+    }
+    p++;
+
+    if (!isdigit(*p)) {
+        return -1;
+    }
+    int sec = *p++ - '0';
+    if (isdigit(*p)) {
+        sec = sec * 10 + *p++ - '0';
+    }
+    time += sec;
+
+    *time_out = sign * time;
+    return p - str;
+}
+
+
+static int parse_month_rule(struct tz64_rule *rule, const char *str)
+{
+    memset(rule, 0, sizeof(*rule));
+    rule->type = RT_MONTH;
+
+    const char *p = str;
+    if (!isdigit(*p)) {
+        return -1;
+    }
+
+    int mon = *p++ - '0';
+    if (isdigit(*p)) {
+        mon = mon * 10 + *p++ - '0';
+    }
+    rule->month = mon;
+
+    if (*p++ != '.') {
+        return -1;
+    }
+
+    if (*p < '1' || '5' < *p) {
+        return -1;
+    }
+    rule->week = *p++ - '0';
+
+    if (*p++ != '.') {
+        return -1;
+    }
+
+    if (*p < '0' || '6' < *p) {
+        return -1;
+    }
+    rule->day = *p++ - '0';
+
+    if (*p != '/') {
+        rule->time = 2 * 3600;
+        return p - str;
+    }
+    p++;
+
+    int len = parse_time(&rule->time, p);
+    if (len < 0) {
+        return len;
+    }
+
+    p += len;
+    return p - str;
+}
+
+
+static int parse_julian_rule(struct tz64_rule *rule, const char *str)
+{
+    memset(rule, 0, sizeof(*rule));
+    rule->type = RT_JULIAN;
+
+    const char *p = str;
+    int yday = 0;
+    for (int i = 0; i < 3 && isdigit(*p); i++) {
+        yday = yday * 10 + *p++ - '0';
+    }
+
+    if (yday < 1 || yday > 365) {
+        return -1;
+    }
+    rule->day = yday;
+
+    if (*p != '/') {
+        rule->time = 2 * 3600;
+        return p - str;
+    }
+    p++;
+
+    int len = parse_time(&rule->time, p);
+    if (len < 0) {
+        return len;
+    }
+
+    p += len;
+    return p - str;
+}
+
+
+static int parse_0julian_rule(struct tz64_rule *rule, const char *str)
+{
+    // Not yet implemented.
+    abort();
+}
+
+
+static int parse_rule(struct tz64_rule *rule, const char *str)
+{
+    if (*str == 'M') {
+        int len = parse_month_rule(rule, str + 1);
+        return (len < 0) ? len : (len + 1);
+    } else if (*str == 'J') {
+        int len = parse_julian_rule(rule, str + 1);
+        return (len < 0) ? len : (len + 1);
+    } else if (isdigit(*str)) {
+        return parse_0julian_rule(rule, str);
+    } else {
+        return -1;
+    }
+}
+
+
+static int find_offset(const struct tz64 *tz, uint8_t typecnt, const char *desig, int32_t offset, int isdst)
+{
+    for (uint8_t i = 0; i < typecnt; i++) {
+        if (tz->offsets[i].utoff == offset &&
+            tz->offsets[i].isdst == isdst &&
+            strcmp(desig, tz->desig + tz->offsets[i].desig) == 0) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+
+static int parse_tz_string(struct tz64 *tz, uint32_t typecnt, const char *s)
+{
+    // POSIX specifies: stdoffset[dst[offset][,start[/time],end[/time]]]
+    // We support: stdoffset[dst[offset],start[/time],end[/time]]
+    // (start and end are mandatory if dst exiss)
+
+    // Parse the designation
+    char desig[16];
+    int len = parse_desig(desig, sizeof(desig), s);
+    if (len < 0) {
+        return -1;
+    }
+    s += len;
+
+    // Parse the time.
+    int32_t offset;
+    len = parse_time(&offset, s);
+    if (len < 0) {
+        fprintf(stderr, "error: invalid std offset\n");
+        exit(1);
+    }
+    s += len;
+
+    // Look for a matching offset.
+    int i = find_offset(tz, typecnt, desig, offset, 0);
+    if (i < 0) {
+        return -1;
+    }
+    uint8_t stdoff = i;
+
+    // If no daylight savings time then we're done.
+    if (*s == '\0') {
+        tz->rules[0].type = RT_NONE;
+        tz->rules[0].offset = stdoff;
+        tz->rules[1].type = RT_NONE;
+        tz->rules[1].offset = stdoff;
+        return 0;
+    }
+
+    // Parse the daylight savings time designation
+    len = parse_desig(desig, sizeof(desig), s);
+    if (len < 0) {
+        return -1;
+    }
+    s += len;
+
+    // And offset, if any.
+    offset += 3600;
+    if (*s != '\0' && (isdigit(*s) || *s == '+' || *s == '-')) {
+        len = parse_time(&offset, s);
+        if (len < 0) {
+            return -1;
+        }
+        s += len;
+    }
+
+    // Find the offset for this rule.
+    i = find_offset(tz, typecnt, desig, offset, 1);
+    if (i < 0) {
+        return -1;
+    }
+    uint8_t dstoff = i;
+
+    // If there are no rules then just fail.
+    if (*s++ != ',') {
+        return -1;
+    }
+
+    len = parse_rule(&tz->rules[0], s);
+    if (len < 0) {
+        return -1;
+    }
+    s += len;
+
+    if (*s++ != ',') {
+        return -1;
+    }
+
+    len = parse_rule(&tz->rules[1], s);
+    if (len < 0) {
+        return -1;
+    }
+    s += len;
+
+    // Record the offsets.
+    tz->rules[0].offset = stdoff;
+    tz->rules[1].offset = dstoff;
+
+    // Check for trailing garbage.
+    if (*s != '\0') {
+        return -1;
+    }
+
+    return 0;
+}
 
 
 size_t tz_header_data_len(const struct tz_header *header, size_t time_size)
@@ -73,6 +386,7 @@ size_t tz_header_data_len(const struct tz_header *header, size_t time_size)
         header->isstdcnt +
         header->isutcnt;
 }
+
 
 void tz_header_fix_endian(struct tz_header *header)
 {
@@ -155,8 +469,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         (header.leapcnt + 1) * sizeof(int64_t) +
         (header.leapcnt + 1) * sizeof(int32_t) +
         header.timecnt + 1 +
-        header.charcnt +
-        max_tz_str_size;
+        header.charcnt;
     char *block = malloc(block_size);
     if (block == NULL) {
         return NULL;
@@ -185,7 +498,6 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     block += header.timecnt + 1;
     char *desig = block;
     block += header.charcnt;
-    char *tz_str = block;
 
     // Read in the timestamps.
     timestamps[0] = INT64_MIN;
@@ -275,8 +587,9 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     data += header.isutcnt;
 
     // Read the footer.
+    char tzbuf[MAX_TZSTR_SIZE + 1];
     if (data == end) {
-        tz->tz = NULL;
+        tzbuf[0] = '\0';
     } else {
         if (*data++ != '\n') {
             errno = EINVAL;
@@ -284,15 +597,16 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         }
 
         // Find a newline.
-        size_t s = (end - data) < max_tz_str_size ? (end - data) : max_tz_str_size;
+        size_t s = (end - data) < MAX_TZSTR_SIZE ? (end - data) : MAX_TZSTR_SIZE;
         const char *nl = memchr(data, '\n', s);
         if (nl == NULL) {
             errno = EINVAL;
             goto err;
         }
 
-        memcpy(tz_str, data, nl - data);
-        tz_str[nl - data] = '\0';
+        // Copy the time zone string so we can NUL-terminate it.
+        memcpy(tzbuf, data, nl - data);
+        tzbuf[nl - data] = '\0';
     }
 
     // Populate the tz itself, except for the reverse leap seconds.
@@ -305,7 +619,14 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     tz->leap_secs = leap_secs;
     tz->offsets = offsets;
     tz->desig = desig;
-    tz->tz = tz_str;
+
+    // Parse the tz string.
+    if (tzbuf[0] != '\0') {
+        if (parse_tz_string(tz, header.typecnt, tzbuf) < 0) {
+            errno = EINVAL;
+            goto err;
+        }
+    }
 
     // Compute local time for each leap second.
     for (uint32_t i = 0; i < header.leapcnt; i++) {

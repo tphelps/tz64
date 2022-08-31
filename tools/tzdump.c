@@ -494,9 +494,6 @@ static void dump_cooked_file(const char *path)
                offset->isdst ? "dst" : "std");
     }
 
-    printf("-- TZ string --\n");
-    printf("%s\n", tz->tz);
-
     if (tz->leap_count != 0) {
         printf("-- leap seconds --\n");
         for (uint32_t i = 1; i < tz->leap_count; i++) {
