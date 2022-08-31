@@ -153,7 +153,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         header.typecnt * sizeof(struct tz_offset) +
         (header.leapcnt + 1) * sizeof(int64_t) +
         (header.leapcnt + 1) * sizeof(int64_t) +
-        header.leapcnt * sizeof(int32_t) +
+        (header.leapcnt + 1) * sizeof(int32_t) +
         header.timecnt + 1 +
         header.charcnt +
         max_tz_str_size;
