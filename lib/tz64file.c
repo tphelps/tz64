@@ -36,12 +36,30 @@
 #include <fcntl.h>
 #include <errno.h>
 #include <assert.h>
+#include "constants.h"
 #include "tz64.h"
 #include "tz64file.h"
 
 #define MAGIC "TZif"
 #define ZONE_DIR "/usr/share/zoneinfo"
 #define MAX_TZSTR_SIZE 63
+
+enum rule_type {
+    RT_NONE,
+    RT_MONTH,
+    RT_JULIAN,
+    RT_0JULIAN
+};
+
+struct rule {
+    enum rule_type type;
+    uint16_t day;
+    uint8_t week;
+    uint8_t month;
+    uint8_t offset;
+    int32_t time;
+};
+
 
 extern const char *progname;
 
@@ -59,8 +77,8 @@ struct tz64 tz_utc = {
     .rev_leap_ts = NULL,
     .leap_secs = NULL,
     .desig = "UTC",
+    .extra_ts = NULL,
 };
-
 
 
 static int parse_desig(char *buffer, size_t buflen, const char *str)
@@ -102,11 +120,11 @@ static int parse_time(int32_t *time_out, const char *str)
 {
     const char *p = str;
 
-    int sign = -1;
+    int sign = 1;
     if (*p == '+') {
         p++;
     } else if (*p == '-') {
-        sign = 1;
+        sign = -1;
         p++;
     }
 
@@ -159,7 +177,7 @@ static int parse_time(int32_t *time_out, const char *str)
 }
 
 
-static int parse_month_rule(struct tz64_rule *rule, const char *str)
+static int parse_month_rule(struct rule *rule, const char *str)
 {
     memset(rule, 0, sizeof(*rule));
     rule->type = RT_MONTH;
@@ -209,7 +227,7 @@ static int parse_month_rule(struct tz64_rule *rule, const char *str)
 }
 
 
-static int parse_julian_rule(struct tz64_rule *rule, const char *str)
+static int parse_julian_rule(struct rule *rule, const char *str)
 {
     memset(rule, 0, sizeof(*rule));
     rule->type = RT_JULIAN;
@@ -241,14 +259,14 @@ static int parse_julian_rule(struct tz64_rule *rule, const char *str)
 }
 
 
-static int parse_0julian_rule(struct tz64_rule *rule, const char *str)
+static int parse_0julian_rule(struct rule *rule, const char *str)
 {
     // Not yet implemented.
     abort();
 }
 
 
-static int parse_rule(struct tz64_rule *rule, const char *str)
+static int parse_rule(struct rule *rule, const char *str)
 {
     if (*str == 'M') {
         int len = parse_month_rule(rule, str + 1);
@@ -278,7 +296,7 @@ static int find_offset(const struct tz64 *tz, uint8_t typecnt, const char *desig
 }
 
 
-static int parse_tz_string(struct tz64 *tz, uint32_t typecnt, const char *s)
+static int parse_tz_string(struct tz64 *tz, struct rule* rules, uint32_t typecnt, const char *s)
 {
     // POSIX specifies: stdoffset[dst[offset][,start[/time],end[/time]]]
     // We support: stdoffset[dst[offset],start[/time],end[/time]]
@@ -300,6 +318,7 @@ static int parse_tz_string(struct tz64 *tz, uint32_t typecnt, const char *s)
         exit(1);
     }
     s += len;
+    offset = -offset;
 
     // Look for a matching offset.
     int i = find_offset(tz, typecnt, desig, offset, 0);
@@ -310,10 +329,10 @@ static int parse_tz_string(struct tz64 *tz, uint32_t typecnt, const char *s)
 
     // If no daylight savings time then we're done.
     if (*s == '\0') {
-        tz->rules[0].type = RT_NONE;
-        tz->rules[0].offset = stdoff;
-        tz->rules[1].type = RT_NONE;
-        tz->rules[1].offset = stdoff;
+        rules[0].type = RT_NONE;
+        rules[0].offset = stdoff;
+        rules[1].type = RT_NONE;
+        rules[1].offset = stdoff;
         return 0;
     }
 
@@ -332,6 +351,7 @@ static int parse_tz_string(struct tz64 *tz, uint32_t typecnt, const char *s)
             return -1;
         }
         s += len;
+        offset = -offset;
     }
 
     // Find the offset for this rule.
@@ -346,7 +366,7 @@ static int parse_tz_string(struct tz64 *tz, uint32_t typecnt, const char *s)
         return -1;
     }
 
-    len = parse_rule(&tz->rules[0], s);
+    len = parse_rule(&rules[0], s);
     if (len < 0) {
         return -1;
     }
@@ -356,15 +376,15 @@ static int parse_tz_string(struct tz64 *tz, uint32_t typecnt, const char *s)
         return -1;
     }
 
-    len = parse_rule(&tz->rules[1], s);
+    len = parse_rule(&rules[1], s);
     if (len < 0) {
         return -1;
     }
     s += len;
 
     // Record the offsets.
-    tz->rules[0].offset = stdoff;
-    tz->rules[1].offset = dstoff;
+    rules[0].offset = stdoff;
+    rules[1].offset = dstoff;
 
     // Check for trailing garbage.
     if (*s != '\0') {
@@ -372,6 +392,161 @@ static int parse_tz_string(struct tz64 *tz, uint32_t typecnt, const char *s)
     }
 
     return 0;
+}
+
+
+static int need_extra_ts(const struct tz64 *tz, const struct rule *rules)
+{
+    switch (rules[1].type) {
+    case RT_NONE:
+        return 0;
+    case RT_JULIAN:
+        return rules[0].day != 1 || rules[1].day != 365;
+    default:
+        return 1;
+    }
+}
+
+
+static int day_of_week(int year, int month, int day)
+{
+    month -= 2;
+    if (month < 1) {
+        month += 12;
+        year--;
+    }
+
+    return (day + (26 * month - 2) / 10 + year + year / 4 - year / 100 + year / 400) % 7;
+}
+
+
+static int64_t calc_month_trans(const struct tz64 *tz, const struct rule *rule, int year)
+{
+    // Compute the first day of the target month using Zeller's congruence.
+    int wday = day_of_week(year, rule->month, 1);
+
+    // Find the first target day of the month.
+    int mday = rule->day - wday + 1;
+    if (mday <= 0) {
+        mday += days_per_week;
+    }
+
+    // Add the necessary number of weeks.
+    mday += (rule->week - 1) * days_per_week;
+
+    // Make sure that stays within the month.
+    int leap = is_leap(year);
+    if (month_starts[leap][rule->month - 1] + mday >= month_starts[leap][rule->month]) {
+        mday -= days_per_week;
+    }
+
+    // Convert that to a timestamp in UTC.
+    struct tm tm;
+    tm.tm_sec = rule->time;
+    tm.tm_min = 0;
+    tm.tm_hour = 0;
+    tm.tm_mday = mday;
+    tm.tm_mon = rule->month - 1;
+    tm.tm_year = year - base_year;
+    tm.tm_isdst = 0;
+    return mktime_z(&tz_utc, &tm) - tz->offsets[rule->offset].utoff;
+}
+
+
+static int64_t calc_julian_trans(const struct tz64 *tz, const struct rule *rule, int year)
+{
+    int day = rule->day - 1;
+    int mon = day / 32;
+    if (day > month_starts[0][mon + 1]) {
+        mon++;
+    }
+    day -= month_starts[0][mon];
+
+    struct tm tm;
+    tm.tm_sec = rule->time;
+    tm.tm_min = 0;
+    tm.tm_hour = 0;
+    tm.tm_mday = day + 1;
+    tm.tm_mon = mon;
+    tm.tm_year = year - base_year;
+    tm.tm_isdst = 0;
+    return mktime_z(&tz_utc, &tm) - tz->offsets[rule->offset].utoff;
+}
+
+
+static int64_t calc_0julian_trans(const struct tz64 *tz, const struct rule *rule, int year)
+{
+    // Look up the first day of the year.
+    struct tm tm;
+    tm.tm_sec = rule->time;
+    tm.tm_min = 0;
+    tm.tm_hour = 0;
+    tm.tm_mday = 1;
+    tm.tm_mon = 0;
+    tm.tm_year = year - base_year;
+    tm.tm_isdst = 0;
+    int64_t ts = mktime_z(&tz_utc, &tm);
+
+    // Add to get the day of the year.
+    ts += rule->day * secs_per_day;
+
+    // And adjust for the local offset.
+    return ts - tz->offsets[rule->offset].utoff;
+}
+
+
+static int64_t calc_trans(const struct tz64 *tz, const struct rule *rule, int year)
+{
+    switch (rule->type) {
+    case RT_MONTH:
+        return calc_month_trans(tz, rule, year);
+
+    case RT_JULIAN:
+        return calc_julian_trans(tz, rule, year);
+
+    case RT_0JULIAN:
+        return calc_0julian_trans(tz, rule, year);
+
+    default:
+        abort();
+    }
+}
+
+
+static int64_t calc_adj_trans(const struct tz64 *tz, const struct rule *rule, int year)
+{
+    int64_t ts = calc_trans(tz, rule, year);
+
+    // Assume no leap seconds added after the last translation.
+    if (tz->leap_count != 0) {
+        ts += tz->leap_secs[tz->leap_count - 1];
+    }
+
+    return (ts - alt_ref_ts) % secs_per_400_years;
+}
+
+
+static int populate_extra_ts(int64_t *ts, const struct tz64 *tz, const struct rule *rules)
+{
+    // Set the first timestamp to zero for convenience.
+    ts[0] = 0;
+
+    // Calculate the transitions for year 2001.
+    int64_t std = calc_adj_trans(tz, &rules[0], 2001);
+    int64_t dst = calc_adj_trans(tz, &rules[1], 2001);
+
+    // Work out which comes first, and record it.
+    int adj = (std < dst) ? 0 : 1;
+    ts[1 + adj] = std;
+    ts[2 - adj] = dst;
+
+    // Compute the transitions for the remaining 400 years.
+    for (int i = 1; i < 400; i++) {
+        ts[i * 2 + 1] = calc_adj_trans(tz, &rules[adj], 2001 + i);
+        ts[i * 2 + 2] = calc_adj_trans(tz, &rules[1 - adj], 2001 + i);
+    }
+
+    return adj;
 }
 
 
@@ -468,7 +643,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         (header.leapcnt + 1) * sizeof(int64_t) +
         (header.leapcnt + 1) * sizeof(int64_t) +
         (header.leapcnt + 1) * sizeof(int32_t) +
-        header.timecnt + 1 +
+        2 + header.timecnt + 1 +
         header.charcnt;
     char *block = malloc(block_size);
     if (block == NULL) {
@@ -494,8 +669,8 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         leap_secs = (int32_t *)block;
         block += (header.leapcnt + 1) * sizeof(int32_t);
     }
-    uint8_t *offset_map = (uint8_t *)block;
-    block += header.timecnt + 1;
+    uint8_t *offset_map = (uint8_t *)block + 2;
+    block += 2 + header.timecnt + 1;
     char *desig = block;
     block += header.charcnt;
 
@@ -515,6 +690,8 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     }
 
     // Read the timestamp/offset map.
+    offset_map[-2] = 0;
+    offset_map[-1] = 0;
     offset_map[0] = 0;
     memcpy(offset_map + 1, data, header.timecnt);
     for (uint32_t i = 0; i < header.timecnt; i++) {
@@ -619,12 +796,22 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     tz->leap_secs = leap_secs;
     tz->offsets = offsets;
     tz->desig = desig;
+    tz->extra_ts = NULL;
 
     // Parse the tz string.
     if (tzbuf[0] != '\0') {
-        if (parse_tz_string(tz, header.typecnt, tzbuf) < 0) {
+        struct rule rules[2];
+        if (parse_tz_string(tz, rules, header.typecnt, tzbuf) < 0) {
             errno = EINVAL;
             goto err;
+        }
+
+        if (need_extra_ts(tz, rules)) {
+            int64_t *ts = calloc(801, sizeof(int64_t));
+            int adj = populate_extra_ts(ts, tz, rules);
+            tz->extra_ts = ts;
+            offset_map[-2] = rules[adj].offset;
+            offset_map[-1] = rules[1 - adj].offset;
         }
     }
 
@@ -782,5 +969,6 @@ struct tz64 *tzalloc(const char *tz_desc)
 
 void tzfree(struct tz64 *tz)
 {
+    free((int64_t *)tz->extra_ts);
     free(tz);
 }

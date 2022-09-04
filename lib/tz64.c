@@ -21,59 +21,9 @@
 
 #include <inttypes.h>
 #include <errno.h>
+#include "constants.h"
 #include "tz64.h"
 #include "tz64file.h"
-
-static const int64_t secs_per_min = 60;
-static const int64_t mins_per_hour = 60;
-static const int64_t secs_per_hour = mins_per_hour * secs_per_min;
-static const int64_t hours_per_day = 24;
-static const int64_t secs_per_day = hours_per_day * secs_per_hour;
-
-static const int64_t days_per_week = 7;
-static const int64_t days_per_nyear = 365;
-static const int64_t secs_per_nyear = days_per_nyear * secs_per_day;
-
-static const int64_t days_per_4_nyears = 4 * days_per_nyear + 1;
-static const int64_t days_per_ncentury = 100 * days_per_nyear + 100 / 4 - 1;
-static const int64_t days_per_400_years = 400 * days_per_nyear + 400 / 4 - 4 + 1;
-static const int64_t secs_per_400_years = days_per_400_years * secs_per_day;
-static const int64_t avg_secs_per_year = secs_per_400_years / 400;
-
-static const int month_starts[2][13] = {
-    { 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365 },
-    { 0, 31, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335, 366 }
-};
-
-
-// We use 2001-01-01 00:00:00 UTC as our reference time because it
-// simplifies the maths.  Compute seconds from 1970-01-01 00:00:00.
-// That span includes 8 leap years 1972, 1976, 1980, 1984, 1988, 1992,
-// 1996 and 2000.
-static const int64_t base_year = 1900;
-static const int64_t ref_year = 1970;
-static const int64_t alt_ref_year = 2001;
-static const int64_t alt_ref_ts = (((alt_ref_year - ref_year) * days_per_nyear) + 8) * secs_per_day;
-
-// Upper and lower bounds on the maximum timestamp that can be
-// represented in a struct tm.
-static const int64_t max_tm_ts = (ref_year - base_year + INT32_MAX + 1) * avg_secs_per_year;
-static const int64_t min_tm_ts = (ref_year - base_year + INT32_MIN - 1) * avg_secs_per_year;
-
-
-static int is_leap(int year)
-{
-    if (year % 4 != 0) {
-        return 0;
-    } else if (year % 100 != 0) {
-        return 1;
-    } else if (year % 400 != 0) {
-        return 0;
-    } else {
-        return 1;
-    }
-}
-
 
 
 // Populate most of the fields of a struct tm from a UTC timestamp.
@@ -221,28 +171,35 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
         return NULL;
     }
 
-    // Adjust the timestamp for leap seconds.
-    uint32_t li = 0;
+    // Figure out how many leap seconds we're dealing wih.
     int32_t lsec = 0, extra = 0;
     if (tz->leap_count != 0) {
-        li = find_fwd_index(tz->leap_ts, tz->leap_count, t);
+        const uint32_t li = find_fwd_index(tz->leap_ts, tz->leap_count, t);
         extra = (tz->leap_ts[li] == t) ? 1 : 0;
         lsec = tz->leap_secs[li] - extra;
     }
 
-    // Do a binary search to find the index of latest timestamp no
-    // later than t, and adjust the timestamp.
-    const uint32_t i = find_fwd_index(tz->timestamps, tz->ts_count, t);
+    // Figure out which offset to apply.
+    const struct tz_offset *offset;
+    if (tz->extra_ts == NULL || t < tz->timestamps[tz->ts_count - 1]) {
+        // Do a binary search to find the index of latest timestamp no
+        // later than t, and adjust the timestamp.
+        const uint32_t i = find_fwd_index(tz->timestamps, tz->ts_count, t);
+        offset = &tz->offsets[tz->offset_map[i]];
+    } else {
+        // Adjust the timestamp to seconds since 2001-01-01 00:00:00.
+        int64_t adj_ts = (t - alt_ref_ts) % secs_per_400_years;
+
+        // Bisect to find the offset that applies.
+        const int i = find_fwd_index(tz->extra_ts, 801, adj_ts);
+        offset = &tz->offsets[tz->offset_map[(i & 1) - 2]];
+    }
 
     // Convert that to broken-down time as if it were UTC.
-    int64_t year = ts_to_tm_utc(tm, t + tz->offsets[tz->offset_map[i]].utoff - lsec - extra);
+    int64_t year = ts_to_tm_utc(tm, t + offset->utoff - lsec - extra);
 
     // Bump the second up to 60 if appropriate.
     tm->tm_sec += extra;
-
-    // Fill in the tm with the timestamp adjusted by the offset.
-    const struct tz_offset *offset = &tz->offsets[tz->offset_map[i]];
-
 
     // Fill in the remaining fields from the offset.
     tm->tm_isdst = offset->isdst;
@@ -342,7 +299,7 @@ static int64_t canonicalize_tm(struct tm *tm)
 }
 
 
-time_t mktime_z(const struct tz64 *tz, struct tm *tm)
+int64_t mktime_z(const struct tz64 *tz, struct tm *tm)
 {
     // Sequester the seconds when dealing with time zones that support
     // leap seconds.

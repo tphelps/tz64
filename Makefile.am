@@ -30,6 +30,7 @@ noinst_PROGRAMS = \
 
 TESTS = $(check_PROGRAMS)
 
+noinst_HEADERS = lib/constants.h
 include_HEADERS = lib/tz64.h lib/tz64file.h
 
 lib_LIBRARIES = lib/libtz64.a

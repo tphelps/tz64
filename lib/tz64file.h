@@ -35,23 +35,6 @@ struct tz_header {
 };
 
 
-enum tz64_rule_type {
-    RT_NONE,
-    RT_MONTH,
-    RT_JULIAN,
-    RT_0JULIAN
-};
-
-struct tz64_rule {
-    enum tz64_rule_type type;
-    uint8_t offset;
-    uint8_t month;
-    uint8_t week;
-    uint16_t day;
-    int32_t time;
-};
-
-
 struct tz_offset {
     int32_t utoff:23;
     uint32_t isdst:1;
@@ -69,7 +52,7 @@ struct tz64 {
     const int64_t *rev_leap_ts;
     const int32_t *leap_secs;
     const char *desig;
-    struct tz64_rule rules[2];
+    const int64_t *extra_ts;
 };
 
 
