@@ -35,7 +35,7 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
     // Divide out blocks of 400 years to the timestamp into a
     // convenient range.
     int64_t year = alt_ref_year;
-    year -= ts / secs_per_400_years;
+    year += 400 * (ts / secs_per_400_years);
     ts %= secs_per_400_years;
     if (ts < 0) {
         year -= 400;
