@@ -88,9 +88,7 @@ int main(int argc, char *argv[])
     }
     
     int sum = 0;
-    struct timeval before;
-
-    (void)gettimeofday(&before, NULL);
+    clock_t before = clock();
     for (unsigned long i = 0; i < cycles; i++) {
         struct timeval now;
         (void)gettimeofday(&now, NULL);
@@ -110,19 +108,13 @@ int main(int argc, char *argv[])
                 
         sum += tm.tm_sec + tm.tm_min + tm.tm_hour;
     }
+    clock_t after = clock();
 
-    struct timeval after;
-    (void)gettimeofday(&after, NULL);
-
-    struct timeval diff;
-    timersub(&after, &before, &diff);
-    printf("%" PRId64 ".%06ld (%d)\n", (int64_t)diff.tv_sec, (long)diff.tv_usec, sum);
+    printf("%g (%d)\n", (double)(after - before) / CLOCKS_PER_SEC, sum);
 
     struct tm tm;
-    localtime_r(&after.tv_sec, &tm);
 
-    (void)gettimeofday(&before, NULL);
-
+    before = clock();
     for (unsigned long i = 0; i < cycles; i++) {
         switch (mode) {
         case MODE_LOCALTIME_R:
@@ -136,11 +128,9 @@ int main(int argc, char *argv[])
             break;
         }
     }
+    after = clock();
 
-    (void)gettimeofday(&after, NULL);
-
-    timersub(&after, &before, &diff);
-    printf("%" PRId64 ".%06ld (%d)\n", (int64_t)diff.tv_sec, (long)diff.tv_usec, sum);
+    printf("%g (%d)\n", (double)(after - before) / CLOCKS_PER_SEC, sum);
 
     tzfree(tz);
     return 0;
