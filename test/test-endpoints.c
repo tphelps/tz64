@@ -99,19 +99,30 @@ static void usage()
 }
 
 
-static void assert_tm_eq(const struct tm *expected, const struct tm *actual)
+static void assert_tm_eq(int64_t ts, const struct tm *expected, const struct tm *actual)
 {
-    assert(actual->tm_sec == expected->tm_sec);
-    assert(actual->tm_min == expected->tm_min);
-    assert(actual->tm_hour == expected->tm_hour);
-    assert(actual->tm_mday == expected->tm_mday);
-    assert(actual->tm_mon == expected->tm_mon);
-    assert(actual->tm_year == expected->tm_year);
-    assert(actual->tm_wday == expected->tm_wday);
-    assert(actual->tm_yday == expected->tm_yday);
-    assert(actual->tm_isdst == expected->tm_isdst);
-    assert(actual->tm_gmtoff == expected->tm_gmtoff);
-    assert(strcmp(actual->tm_zone, expected->tm_zone) == 0);
+    // If the tms are equal then we're done.
+    if (actual->tm_sec == expected->tm_sec &&
+        actual->tm_min == expected->tm_min &&
+        actual->tm_hour == expected->tm_hour &&
+        actual->tm_mday == expected->tm_mday &&
+        actual->tm_mon == expected->tm_mon &&
+        actual->tm_year == expected->tm_year &&
+        actual->tm_wday == expected->tm_wday &&
+        actual->tm_yday == expected->tm_yday &&
+        actual->tm_isdst == expected->tm_isdst &&
+        actual->tm_gmtoff == expected->tm_gmtoff &&
+        strcmp(actual->tm_zone, expected->tm_zone) == 0) {
+        return;
+    }
+
+    char actbuf[64], expbuf[64];
+    strftime(actbuf, sizeof(actbuf), "%Y-%m-%d %H:%M:%S %Z", actual);
+    strftime(expbuf, sizeof(expbuf), "%Y-%m-%d %H:%M:%S %Z", expected);
+    fprintf(stderr, "error: broken-down times do not match at %" PRId64 ":\n", ts);
+    fprintf(stderr, "expected: %s\n", expbuf);
+    fprintf(stderr, "  actual: %s\n", actbuf);
+    abort();
 }
 
 
@@ -128,7 +139,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     assert(localtime_rz(tz, &ts, &test_tm) == &test_tm);
 
     // Make sure they produce the same result.
-    assert_tm_eq(&ref_tm, &test_tm);
+    assert_tm_eq(ts, &ref_tm, &test_tm);
     int year = test_tm.tm_year + 1900;
 
     // Convert back to a timestamp.
@@ -137,7 +148,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
 
     // See if mktime produces the same result
     if (test_ts == ref_ts) {
-        assert_tm_eq(&ref_tm, &test_tm);
+        assert_tm_eq(ts, &ref_tm, &test_tm);
         return year;
     }
 
@@ -153,7 +164,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     if (test_ts == ref_ts) {
         putchar(':');
         fflush(stdout);
-        assert_tm_eq(&ref_tm, &test_tm);
+        assert_tm_eq(ts, &ref_tm, &test_tm);
         return year;
     }
 
@@ -167,7 +178,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     if (test_ts == ref_ts) {
         putchar('#');
         fflush(stdout);
-        assert_tm_eq(&ref_tm, &test_tm);
+        assert_tm_eq(ts, &ref_tm, &test_tm);
         return year;
     }
 
