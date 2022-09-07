@@ -131,17 +131,14 @@ static uint32_t find_fwd_index(const int64_t *timestamps, uint32_t count, int64_
 
 static uint32_t find_extra_fwd_index(const int32_t *timestamps, uint32_t count, int64_t ts)
 {
-    uint32_t lo = 0, hi = count - 1;
-    while (lo < hi) {
-        uint32_t i = (lo + hi + 1) / 2;
-        if (tz64_year_starts[i / 2] + timestamps[tz64_year_types[i / 2] * 2 + (i & 1)] <= ts) {
-            lo = i;
-        } else {
-            hi = i - 1;
+    uint32_t i = 2 * ts / avg_secs_per_year;
+    for (; i < count; i++) {
+        if (ts < tz64_year_starts[i / 2] + timestamps[tz64_year_types[i / 2] * 2 + (i & 1)]) {
+            break;
         }
     }
 
-    return lo;
+    return i;
 }
 
 
