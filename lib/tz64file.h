@@ -52,7 +52,7 @@ struct tz64 {
     const int64_t *rev_leap_ts;
     const int32_t *leap_secs;
     const char *desig;
-    const int64_t *extra_ts;
+    const int32_t *extra_ts;
 };
 
 

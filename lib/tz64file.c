@@ -416,7 +416,7 @@ static int day_of_week(int year, int month, int day)
         year--;
     }
 
-    return (day + (26 * month - 2) / 10 + year + year / 4 - year / 100 + year / 400) % 7;
+    return (day + (26 * month - 2) / 10 + year + year / 4 - year / 100 + year / 400) % days_per_week;
 }
 
 
@@ -513,7 +513,7 @@ static int64_t calc_trans(const struct tz64 *tz, const struct rule *rule, int ye
 }
 
 
-static int64_t calc_adj_trans(const struct tz64 *tz, const struct rule *rule, int year)
+static int32_t calc_adj_trans(const struct tz64 *tz, const struct rule *rule, int year)
 {
     int64_t ts = calc_trans(tz, rule, year);
 
@@ -522,28 +522,25 @@ static int64_t calc_adj_trans(const struct tz64 *tz, const struct rule *rule, in
         ts += tz->leap_secs[tz->leap_count - 1];
     }
 
-    return (ts - alt_ref_ts) % secs_per_400_years;
+    return (ts - alt_ref_ts) % secs_per_400_years - tz64_year_starts[year - 2001];
 }
 
 
-static int populate_extra_ts(int64_t *ts, const struct tz64 *tz, const struct rule *rules)
+static int populate_extra_ts(int32_t *ts, const struct tz64 *tz, const struct rule *rules)
 {
-    // Set the first timestamp to zero for convenience.
-    ts[0] = 0;
-
     // Calculate the transitions for year 2001.
-    int64_t std = calc_adj_trans(tz, &rules[0], 2001);
-    int64_t dst = calc_adj_trans(tz, &rules[1], 2001);
+    int32_t std = calc_adj_trans(tz, &rules[0], 2001);
+    int32_t dst = calc_adj_trans(tz, &rules[1], 2001);
 
     // Work out which comes first, and record it.
     int adj = (std < dst) ? 0 : 1;
-    ts[1 + adj] = std;
-    ts[2 - adj] = dst;
+    ts[adj] = std;
+    ts[1 - adj] = dst;
 
     // Compute the transitions for the remaining 400 years.
     for (int i = 1; i < 400; i++) {
-        ts[i * 2 + 1] = calc_adj_trans(tz, &rules[adj], 2001 + i);
-        ts[i * 2 + 2] = calc_adj_trans(tz, &rules[1 - adj], 2001 + i);
+        ts[i * 2] = calc_adj_trans(tz, &rules[adj], 2001 + i);
+        ts[i * 2 + 1] = calc_adj_trans(tz, &rules[1 - adj], 2001 + i);
     }
 
     return adj;
@@ -807,11 +804,11 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         }
 
         if (need_extra_ts(tz, rules)) {
-            int64_t *ts = calloc(801, sizeof(int64_t));
+            int32_t *ts = calloc(800, sizeof(int32_t));
             int adj = populate_extra_ts(ts, tz, rules);
             tz->extra_ts = ts;
-            offset_map[-2] = rules[adj].offset;
-            offset_map[-1] = rules[1 - adj].offset;
+            offset_map[-2] = rules[1 - adj].offset;
+            offset_map[-1] = rules[adj].offset;
         }
     }
 

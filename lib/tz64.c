@@ -129,6 +129,22 @@ static uint32_t find_fwd_index(const int64_t *timestamps, uint32_t count, int64_
 }
 
 
+static uint32_t find_extra_fwd_index(const int32_t *timestamps, uint32_t count, int64_t ts)
+{
+    uint32_t lo = 0, hi = count - 1;
+    while (lo < hi) {
+        uint32_t i = (lo + hi + 1) / 2;
+        if (timestamps[i] + tz64_year_starts[i / 2] <= ts) {
+            lo = i;
+        } else {
+            hi = i - 1;
+        }
+    }
+
+    return lo;
+}
+
+
 static uint32_t find_rev_leap(const struct tz64 *restrict tz, int64_t ymdhm)
 {
     uint32_t lo = 0, hi = tz->leap_count - 1;
@@ -191,7 +207,7 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
         int64_t adj_ts = (t - alt_ref_ts) % secs_per_400_years;
 
         // Bisect to find the offset that applies.
-        const int i = find_fwd_index(tz->extra_ts, 801, adj_ts);
+        const int i = find_extra_fwd_index(tz->extra_ts, 800, adj_ts);
         offset = &tz->offsets[tz->offset_map[(i & 1) - 2]];
     }
 

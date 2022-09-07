@@ -33,11 +33,19 @@ TESTS = $(check_PROGRAMS)
 noinst_HEADERS = lib/constants.h
 include_HEADERS = lib/tz64.h lib/tz64file.h
 
+BUILT_SOURCES = lib/yearinfo.c
+
+lib/yearinfo.c: $(srcdir)/gen-year-info.py
+	$(srcdir)/gen-year-info.py $@
+
+
 lib_LIBRARIES = lib/libtz64.a
 
 lib_libtz64_a_SOURCES = \
+	lib/constants.h \
 	lib/tz64.h lib/tz64.c \
-	lib/tz64file.h lib/tz64file.c
+	lib/tz64file.h lib/tz64file.c \
+	lib/yearinfo.c
 
 AM_CPPFLAGS = -I$(srcdir)/lib
 
