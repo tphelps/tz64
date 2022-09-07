@@ -528,9 +528,16 @@ static int32_t calc_adj_trans(const struct tz64 *tz, const struct rule *rule, in
 
 static int populate_extra_ts(int32_t *ts, const struct tz64 *tz, const struct rule *rules)
 {
-    // Calculate the transitions for year 2001.
-    int32_t std = calc_adj_trans(tz, &rules[0], 2001);
-    int32_t dst = calc_adj_trans(tz, &rules[1], 2001);
+    // Repeat for 13 other carefully chosen years to get the full set
+    // of 14.
+    const int years[14] = {
+        2006, 2001, 2002, 2003, 2009, 2010, 2005,
+        2012, 2024, 2008, 2020, 2004, 2016, 2028
+    };
+
+    // Calculate the transitions for year 2006.
+    int32_t std = calc_adj_trans(tz, &rules[0], years[0]);
+    int32_t dst = calc_adj_trans(tz, &rules[1], years[0]);
 
     // Work out which comes first, and record it.
     int adj = (std < dst) ? 0 : 1;
@@ -538,9 +545,9 @@ static int populate_extra_ts(int32_t *ts, const struct tz64 *tz, const struct ru
     ts[1 - adj] = dst;
 
     // Compute the transitions for the remaining 400 years.
-    for (int i = 1; i < 400; i++) {
-        ts[i * 2] = calc_adj_trans(tz, &rules[adj], 2001 + i);
-        ts[i * 2 + 1] = calc_adj_trans(tz, &rules[1 - adj], 2001 + i);
+    for (int i = 1; i < days_per_week * 2; i++) {
+        ts[i * 2] = calc_adj_trans(tz, &rules[adj], years[i]);
+        ts[i * 2 + 1] = calc_adj_trans(tz, &rules[1 - adj], years[i]);
     }
 
     return adj;
@@ -640,6 +647,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         (header.leapcnt + 1) * sizeof(int64_t) +
         (header.leapcnt + 1) * sizeof(int64_t) +
         (header.leapcnt + 1) * sizeof(int32_t) +
+        14 * 2 * sizeof(int32_t) +
         2 + header.timecnt + 1 +
         header.charcnt;
     char *block = malloc(block_size);
@@ -666,6 +674,8 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         leap_secs = (int32_t *)block;
         block += (header.leapcnt + 1) * sizeof(int32_t);
     }
+    int32_t *extra_ts = (int32_t *)block;
+    block += 14 * 2 * sizeof(int32_t);
     uint8_t *offset_map = (uint8_t *)block + 2;
     block += 2 + header.timecnt + 1;
     char *desig = block;
@@ -804,9 +814,8 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         }
 
         if (need_extra_ts(tz, rules)) {
-            int32_t *ts = calloc(800, sizeof(int32_t));
-            int adj = populate_extra_ts(ts, tz, rules);
-            tz->extra_ts = ts;
+            int adj = populate_extra_ts(extra_ts, tz, rules);
+            tz->extra_ts = extra_ts;
             offset_map[-2] = rules[1 - adj].offset;
             offset_map[-1] = rules[adj].offset;
         }
@@ -966,6 +975,5 @@ struct tz64 *tzalloc(const char *tz_desc)
 
 void tzfree(struct tz64 *tz)
 {
-    free((int64_t *)tz->extra_ts);
     free(tz);
 }

@@ -134,7 +134,7 @@ static uint32_t find_extra_fwd_index(const int32_t *timestamps, uint32_t count, 
     uint32_t lo = 0, hi = count - 1;
     while (lo < hi) {
         uint32_t i = (lo + hi + 1) / 2;
-        if (timestamps[i] + tz64_year_starts[i / 2] <= ts) {
+        if (tz64_year_starts[i / 2] + timestamps[tz64_year_types[i / 2] * 2 + (i & 1)] <= ts) {
             lo = i;
         } else {
             hi = i - 1;
