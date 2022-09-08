@@ -436,7 +436,7 @@ static int64_t calc_month_trans(const struct tz64 *tz, const struct rule *rule, 
 
     // Make sure that stays within the month.
     int leap = is_leap(year);
-    if (month_starts[leap][rule->month - 1] + mday >= month_starts[leap][rule->month]) {
+    if (month_starts[leap][rule->month - 1] + mday - 1 >= month_starts[leap][rule->month]) {
         mday -= days_per_week;
     }
 
