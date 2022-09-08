@@ -42,7 +42,7 @@ def main():
 
         f.write('const int64_t tz64_year_starts[400] = {\n')
         for i in range(0, 400):
-            f.write('    UINT64_C({}),\n'.format(year_start_utc(i + 2001)))
+            f.write('    INT64_C({}),\n'.format(year_start_utc(i + 2001)))
         f.write('};\n')
         f.write('\n')
 
