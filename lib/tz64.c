@@ -129,16 +129,16 @@ static uint32_t find_fwd_index(const int64_t *timestamps, uint32_t count, int64_
 }
 
 
-static uint32_t find_extra_fwd_index(const int32_t *timestamps, uint32_t count, int64_t ts)
+static int find_extra_fwd_index(const int32_t *timestamps, uint32_t count, int64_t ts)
 {
-    uint32_t i = 2 * ts / avg_secs_per_year;
+    int i = ts / avg_secs_per_year * 2;
     for (; i < count; i++) {
         if (ts < tz64_year_starts[i / 2] + timestamps[tz64_year_types[i / 2] * 2 + (i & 1)]) {
             break;
         }
     }
 
-    return i;
+    return ((i + 1) & 1) - 2;
 }
 
 
@@ -205,7 +205,7 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
 
         // Bisect to find the offset that applies.
         const int i = find_extra_fwd_index(tz->extra_ts, 800, adj_ts);
-        offset = &tz->offsets[tz->offset_map[(i & 1) - 2]];
+        offset = &tz->offsets[tz->offset_map[i]];
     }
 
     // Convert that to broken-down time as if it were UTC.
