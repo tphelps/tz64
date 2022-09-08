@@ -152,4 +152,32 @@ int main(int argc, char *argv[])
     assert(tm.tm_isdst == 0);
     assert(tm.tm_gmtoff == -5 * 60 * 60);
     assert(strcmp(tm.tm_zone, "EST") == 0);
+
+    ts = INT64_C(2171494800);
+    assert(localtime_rz(tz_london, &ts, &tm) == &tm);
+    assert(tm.tm_sec == 0);
+    assert(tm.tm_min == 0);
+    assert(tm.tm_hour == 2);
+    assert(tm.tm_mday == 24);
+    assert(tm.tm_mon == 10 - 1);
+    assert(tm.tm_year == 2038 - 1900);
+    assert(tm.tm_wday == 0);
+    assert(tm.tm_yday == 297 - 1);
+    assert(tm.tm_isdst == 1);
+    assert(tm.tm_gmtoff == 1 * 60 * 60);
+    assert(strcmp(tm.tm_zone, "BST") == 0);
+
+    ts = INT64_C(13601088000);
+    assert(localtime_rz(tz_new_york, &ts, &tm) == &tm);
+    assert(tm.tm_sec == 0);
+    assert(tm.tm_min == 0);
+    assert(tm.tm_hour == 19);
+    assert(tm.tm_mday == 31);
+    assert(tm.tm_mon == 12 - 1);
+    assert(tm.tm_year == 2400 - 1900);
+    assert(tm.tm_wday == 0);
+    assert(tm.tm_yday == 366 - 1);
+    assert(tm.tm_isdst == 0);
+    assert(tm.tm_gmtoff == -5 * 60 * 60);
+    assert(strcmp(tm.tm_zone, "EST") == 0);
 }
