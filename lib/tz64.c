@@ -194,11 +194,13 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
 
     // Figure out which offset to apply.
     const struct tz_offset *offset;
-    if (tz->extra_ts == NULL || t < tz->timestamps[tz->ts_count - 1]) {
+    if (t < tz->timestamps[tz->ts_count - 1]) {
         // Do a binary search to find the index of latest timestamp no
         // later than t, and adjust the timestamp.
         const uint32_t i = find_fwd_index(tz->timestamps, tz->ts_count, t);
         offset = &tz->offsets[tz->offset_map[i]];
+    } else if (tz->extra_ts == NULL) {
+        offset = &tz->offsets[tz->offset_map[tz->ts_count - 1]];
     } else {
         // Adjust the timestamp to seconds since 2001-01-01 00:00:00.
         int64_t adj_ts = (t - alt_ref_ts) % secs_per_400_years;
