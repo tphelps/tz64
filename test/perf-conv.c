@@ -122,6 +122,7 @@ int main(int argc, char *argv[])
     printf("%g (%d)\n", (double)(after - before) / CLOCKS_PER_SEC, sum);
 
     struct tm tm;
+    localtime_rz(tz, &when, &tm);
 
     before = clock();
     for (unsigned long i = 0; i < cycles; i++) {

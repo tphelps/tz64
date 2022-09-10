@@ -210,7 +210,7 @@ static void check_tz(const char *name)
 
         int prev = 0;
         const int64_t start = -2208988800;
-        const int64_t end = 2145916800;
+        const int64_t end = 16725189600 + 86400;
         for (time_t ts = start; ts <= end; ts++) {
             int year = check_ts(tz, ts);
             if (prev != year) {

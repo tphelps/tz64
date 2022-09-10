@@ -113,6 +113,12 @@ static int64_t tm_utc_to_ts(const struct tm *tm)
 }
 
 
+static int64_t expand_ts(const int32_t *timestamps, int i)
+{
+    return tz64_year_starts[i / 2] + timestamps[tz64_year_types[i / 2] * 2 + (i & 1)];
+}
+
+
 static uint32_t find_fwd_index(const int64_t *timestamps, uint32_t count, int64_t ts)
 {
     uint32_t lo = 0, hi = count - 1;
@@ -129,11 +135,11 @@ static uint32_t find_fwd_index(const int64_t *timestamps, uint32_t count, int64_
 }
 
 
-static int find_extra_fwd_index(const int32_t *timestamps, uint32_t count, int64_t ts)
+static int find_extra_fwd_index(const int32_t *timestamps, int64_t ts)
 {
     int i = ts / avg_secs_per_year * 2;
-    for (; i < count; i++) {
-        if (ts < tz64_year_starts[i / 2] + timestamps[tz64_year_types[i / 2] * 2 + (i & 1)]) {
+    for (; i < 800; i++) {
+        if (ts < expand_ts(timestamps, i)) {
             break;
         }
     }
@@ -158,7 +164,7 @@ static uint32_t find_rev_leap(const struct tz64 *restrict tz, int64_t ymdhm)
 }
 
 
-static uint32_t find_rev_offset(const struct tz64* restrict tz, int64_t ts)
+static uint32_t find_rev_index(const struct tz64* restrict tz, int64_t ts)
 {
     uint32_t lo = 0, hi = tz->ts_count - 1;
     while (lo < hi) {
@@ -171,6 +177,20 @@ static uint32_t find_rev_offset(const struct tz64* restrict tz, int64_t ts)
     }
 
     return lo;
+}
+
+
+static int find_extra_rev_index(const struct tz64* restrict tz, int64_t adj_ts)
+{
+    int i = (adj_ts / avg_secs_per_year) * 2;
+
+    for (; i < 800; i++) {
+        if (adj_ts - tz->offsets[tz->offset_map[(i & 1) - 2]].utoff < expand_ts(tz->extra_ts, i)) {
+            break;
+        }
+    }
+
+    return i - 1;
 }
 
 
@@ -206,7 +226,7 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
         int64_t adj_ts = (t - alt_ref_ts) % secs_per_400_years;
 
         // Bisect to find the offset that applies.
-        const int i = find_extra_fwd_index(tz->extra_ts, 800, adj_ts);
+        const int i = find_extra_fwd_index(tz->extra_ts, adj_ts);
         offset = &tz->offsets[tz->offset_map[i]];
     }
 
@@ -347,54 +367,105 @@ int64_t mktime_z(const struct tz64 *tz, struct tm *tm)
     const int32_t lsec = (li == 0) ? 0 : tz->leap_secs[li];
     ts += lsec;
 
-    // Do a binary search to find the latest offset that could
-    // correspond to ts.
-    uint32_t i = find_rev_offset(tz, ts);
+    // Find the latest offset that contains the timestamp.
+    const struct tz_offset *offset, *prev_offset, *next_offset;
+    int64_t curr_ts, next_ts;
+    int64_t curr_trans, next_trans;
+    if (ts - tz->offsets[tz->offset_map[tz->ts_count - 1]].utoff < tz->timestamps[tz->ts_count - 1]) {
+        uint32_t i = find_rev_index(tz, ts);
+        offset = &tz->offsets[tz->offset_map[i]];
+        curr_ts = ts;
+        curr_trans = tz->timestamps[i];
+        prev_offset = (i == 0) ? NULL : &tz->offsets[tz->offset_map[i - 1]];
+
+        if (i + 1 < tz->ts_count) {
+            next_offset = &tz->offsets[tz->offset_map[i + 1]];
+            next_ts = ts;
+            next_trans = tz->timestamps[i + 1];
+        } else if (tz->extra_ts == NULL) {
+            next_offset = NULL;
+            next_ts = 0;
+            next_trans = 0;
+        } else {
+            int64_t adj_ts = (ts - alt_ref_ts) % secs_per_400_years;
+            next_ts = adj_ts;
+            int j = find_extra_rev_index(tz, adj_ts);
+            next_offset = &tz->offsets[tz->offset_map[(j & 1) - 2]];
+            next_trans = expand_ts(tz->extra_ts, j);
+        }
+    } else if (tz->extra_ts == NULL) {
+        uint32_t i = tz->ts_count - 1;
+        offset = &tz->offsets[tz->offset_map[i]];
+        curr_ts = ts;
+        curr_trans = tz->timestamps[i];
+        prev_offset = (i == 0) ? NULL : &tz->offsets[tz->offset_map[i - 1]];
+
+        next_ts = 0;
+        next_offset = NULL;
+        next_trans = 0;
+    } else {
+        int64_t adj_ts = (ts - alt_ref_ts) % secs_per_400_years;
+        int i = find_extra_rev_index(tz, adj_ts);
+        offset = &tz->offsets[tz->offset_map[(i & 1) - 2]];
+        curr_ts = adj_ts;
+        curr_trans = expand_ts(tz->extra_ts, i);
+
+        next_offset = &tz->offsets[tz->offset_map[((i + 1) & 1) - 2]];
+        next_ts = adj_ts;
+        next_trans = expand_ts(tz->extra_ts, i + 1);
+
+        // Decide if the previous transition is explicit.
+        int64_t diff = curr_trans - expand_ts(tz->extra_ts, i - 1);
+        if (tz->ts_count >= 2 && ts - diff < tz->timestamps[tz->ts_count - 1]) {
+            prev_offset = &tz->offsets[tz->offset_map[tz->ts_count - 2]];
+        } else {
+            prev_offset = &tz->offsets[tz->offset_map[((i + 1) & 1) - 2]];
+        }
+    }
 
     // Cope with problematic timestamps.
-    if (i + 1 < tz->ts_count && ts - tz->offsets[tz->offset_map[i]].utoff >= tz->timestamps[i + 1]) {
+    if (next_offset != NULL && next_ts - offset->utoff >= next_trans) {
         // The time stamp is both after this offset's range and before
         // the next one: it's not a real time.  If the DST indicator
         // matches this one then we assume that something was added to
         // to a valid struct tm to push it into the next; otherwise
         // we'll assume subtraction from the next.
-        if (tm->tm_isdst >= 0 && !tm->tm_isdst == !tz->offsets[tz->offset_map[i]].isdst &&
-            !tm->tm_isdst != !tz->offsets[tz->offset_map[i + 1]].isdst) {
+        if (tm->tm_isdst >= 0 && !tm->tm_isdst == !offset->isdst &&
+            !tm->tm_isdst != !next_offset->isdst) {
             // Adjust the timestamp by the current offset.
-            ts -= tz->offsets[tz->offset_map[i]].utoff;
+            ts -= offset->utoff;
 
             // Recompute the broken-down time using the next offset.
-            ts_to_tm_utc(tm, ts + tz->offsets[tz->offset_map[i + 1]].utoff);
-            i++;
+            ts_to_tm_utc(tm, ts + next_offset->utoff);
+            offset = next_offset;
         } else {
             // Adjust the timestamp by the next offset.
-            ts -= tz->offsets[tz->offset_map[i + 1]].utoff;
+            ts -= next_offset->utoff;
 
             // Recompute broken-down time using the current offset.
             recalc = 1;
         }
     } else {
-        if (tm->tm_isdst >= 0 && !tm->tm_isdst != !tz->offsets[tz->offset_map[i]].isdst &&
-            i > 0 && !tm->tm_isdst == !tz->offsets[tz->offset_map[i - 1]].isdst &&
-            ts - tz->offsets[tz->offset_map[i - 1]].utoff < tz->timestamps[i]) {
+        if (tm->tm_isdst >= 0 && !tm->tm_isdst != !offset->isdst &&
+            prev_offset != NULL && !tm->tm_isdst == !prev_offset->isdst &&
+            curr_ts - prev_offset->utoff < curr_trans) {
             // The time could belong in either this offset or the previous
             // one, but the DST indicators match for the previous one so
             // use that.
-            i--;
+            offset = prev_offset;
         }
 
-        ts -= tz->offsets[tz->offset_map[i]].utoff;
+        ts -= offset->utoff;
     }
 
     if (recalc) {
         int extra = (li < tz->leap_count && tz->leap_ts[li + 1] == ts) ? 1 : 0;
-        ts_to_tm_utc(tm, ts + tz->offsets[tz->offset_map[i]].utoff - lsec - extra);
+        ts_to_tm_utc(tm, ts + offset->utoff - lsec - extra);
         tm->tm_sec += extra;
     }
 
     // We've chosen our offset.  Use it to fill in the remaining
     // parts of broken-down time.
-    const struct tz_offset *offset = &tz->offsets[tz->offset_map[i]];
     tm->tm_isdst = offset->isdst;
     tm->tm_gmtoff = offset->utoff;
     tm->tm_zone = tz->desig + offset->desig;
