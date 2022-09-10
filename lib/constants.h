@@ -59,8 +59,8 @@ static const int64_t alt_ref_ts = (((alt_ref_year - ref_year) * days_per_nyear) 
 static const int64_t max_tm_ts = (ref_year - base_year + INT32_MAX + 1) * avg_secs_per_year;
 static const int64_t min_tm_ts = (ref_year - base_year + INT32_MIN - 1) * avg_secs_per_year;
 
-extern const int64_t *tz64_year_starts;
-extern const uint8_t *tz64_year_types;
+extern const int64_t *const tz64_year_starts;
+extern const uint8_t *const tz64_year_types;
 
 static inline int is_leap(int year)
 {

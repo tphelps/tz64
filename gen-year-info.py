@@ -71,7 +71,7 @@ def main():
             f.write('    INT64_C({}),\n'.format(year_start_utc(i + 2001)))
         f.write('};\n')
         f.write('\n')
-        f.write('const int64_t *tz64_year_starts = &raw_year_starts[1];\n')
+        f.write('const int64_t *const tz64_year_starts = &raw_year_starts[1];\n')
         f.write('\n')
 
         f.write('static const uint8_t raw_year_types[402] = {\n')
@@ -86,7 +86,7 @@ def main():
             
         f.write('};\n')
         f.write('\n')
-        f.write('const uint8_t *tz64_year_types = &raw_year_types[1];\n')
+        f.write('const uint8_t *const tz64_year_types = &raw_year_types[1];\n')
                     
 
 if __name__ == '__main__':
