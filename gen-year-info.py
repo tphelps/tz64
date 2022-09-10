@@ -51,6 +51,10 @@ def year_start_utc(year):
     return SECS_PER_400_YEARS * block + SECS_PER_NYEAR * year + SECS_PER_DAY * (year // 4 - year // 100)
 
 
+def year_type(year):
+    return is_leap(year) * 7 + day_of_week(year, 1, 1)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('output')
@@ -61,21 +65,28 @@ def main():
         f.write('#include "constants.h"\n')
         f.write('\n')
 
-        f.write('const int64_t tz64_year_starts[400] = {\n')
-        for i in range(0, 400):
+        f.write('static const int64_t raw_year_starts[402] = {\n')
+        f.write('    INT64_C({}),\n'.format(year_start_utc(2400) - year_start_utc(2401)))
+        for i in range(0, 401):
             f.write('    INT64_C({}),\n'.format(year_start_utc(i + 2001)))
         f.write('};\n')
         f.write('\n')
+        f.write('const int64_t *tz64_year_starts = &raw_year_starts[1];\n')
+        f.write('\n')
 
-        f.write('const uint8_t tz64_year_types[400] = {\n')
+        f.write('static const uint8_t raw_year_types[402] = {\n')
+        f.write('    {},\n'.format(year_type(2000)))
         for i in range(0, 400, 4):
             f.write('   ')
             for j in range(0, 4):
                 year = 2001 + i + j
-                f.write(' {},'.format(is_leap(year) * 7 + day_of_week(year, 1, 1)))
+                f.write(' {},'.format(year_type(year)))
             f.write('\n')
+        f.write('    {}\n'.format(year_type(2401)))
             
         f.write('};\n')
+        f.write('\n')
+        f.write('const uint8_t *tz64_year_types = &raw_year_types[1];\n')
                     
 
 if __name__ == '__main__':
