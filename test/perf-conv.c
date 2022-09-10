@@ -24,7 +24,12 @@ static void set_progname(const char *arg0)
 
 static void usage()
 {
-    fprintf(stderr, "usage: %s [-t tz] [-n cycles]\n", progname);
+    fprintf(stderr, "usage: %s [-c] [-u] [-s timestamp] [-t tz] [-n cycles]\n", progname);
+    fprintf(stderr, "    -s timestamp    Use timestamp when converting to localtime [now]\n");
+    fprintf(stderr, "    -t tz           Perform tests in tz\n");
+    fprintf(stderr, "    -n cycles       Run each test cycles times [100,000,000]\n");
+    fprintf(stderr, "    -u              Mesaure UTC (gmtime/timegm) performance\n");
+    fprintf(stderr, "    -c              Measure libc's mktime/localtime_r performance\n");
 }
 
 
@@ -33,12 +38,13 @@ int main(int argc, char *argv[])
     const char *tz_name = NULL;
     unsigned long cycles = 100e6;
     enum mode mode = MODE_LOCALTIME_RZ;
+    time_t when = time(NULL);
 
     set_progname(argv[0]);
 
     char *p;
     int choice;
-    while ((choice = getopt(argc, argv, "ct:n:uz")) != -1) {
+    while ((choice = getopt(argc, argv, "cn:s:t:u")) != -1) {
         switch (choice) {
         case 'c':
             mode = MODE_LOCALTIME_R;
@@ -48,21 +54,24 @@ int main(int argc, char *argv[])
             tz_name = optarg;
             break;
 
+        case 's':
+            when = strtol(optarg, &p, 0);
+            if (p == optarg || *p != '\0') {
+                fprintf(stderr, "%s: error: failed to parse %s as an integer\n", progname, optarg);
+                exit(1);
+            }
+            break;
+
         case 'n':
             cycles = strtoul(optarg, &p, 0);
             if (p == optarg || *p != '\0') {
-                fprintf(stderr, "%s: error: failed to parse %s as an integer\n",
-                        progname, optarg);
+                fprintf(stderr, "%s: error: failed to parse %s as an integer\n", progname, optarg);
                 exit(1);
             }
             break;
 
         case 'u':
             mode = MODE_GMTIME_R;
-            break;
-
-        case 'z':
-            mode = MODE_LOCALTIME_RZ;
             break;
 
         case '?':
@@ -96,13 +105,13 @@ int main(int argc, char *argv[])
         struct tm tm;
         switch (mode) {
         case MODE_LOCALTIME_R:
-            (void)localtime_r(&now.tv_sec, &tm);
+            (void)localtime_r(&when, &tm);
             break;
         case MODE_GMTIME_R:
-            (void)gmtime_r(&now.tv_sec, &tm);
+            (void)gmtime_r(&when, &tm);
             break;
         case MODE_LOCALTIME_RZ:
-            (void)localtime_rz(tz, &now.tv_sec, &tm);
+            (void)localtime_rz(tz, &when, &tm);
             break;
         }
                 
