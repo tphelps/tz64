@@ -25,6 +25,17 @@
 #include <string.h>
 #include <assert.h>
 #include <tz64.h>
+#include "utils.h"
+
+enum day_of_week {
+    DOW_SUN = 0,
+    DOW_MON = 1,
+    DOW_TUE = 2,
+    DOW_WED = 3,
+    DOW_THU = 4,
+    DOW_FRI = 5,
+    DOW_SAT = 6
+};
 
 static void init_tm(struct tm *tm, int year, int month, int day, int hour, int min, int sec, int isdst)
 {
@@ -38,6 +49,14 @@ static void init_tm(struct tm *tm, int year, int month, int day, int hour, int m
     tm->tm_isdst = isdst;
 }
 
+
+static void init_tm_ext(struct tm *tm, int wday, int yday, int utoff, const char *desig)
+{
+    tm->tm_wday = wday;
+    tm->tm_yday = yday - 1;
+    tm->tm_gmtoff = utoff;
+    tm->tm_zone = desig;
+}
 
 
 int main(int argc, char *argv[])
@@ -55,153 +74,73 @@ int main(int argc, char *argv[])
 
     // Reverse the zero timestamp in each zone.
     time_t ts = 0;
-    struct tm tm;
+    struct tm tm, expected;
     init_tm(&tm, 1970, 1, 1, 10, 0, 0, -1);
     assert(mktime_z(tz_melbourne, &tm) == ts);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 10);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 1970 - 1900);
-    assert(tm.tm_wday == 4);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 10 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "AEST") == 0);
+    init_tm(&expected, 1970, 1, 1, 10, 0, 0, 0);
+    init_tm_ext(&expected, DOW_THU, 1, 10 * 3600, "AEST");
+    assert_tm_eq(ts, &expected, &tm);
 
     init_tm(&tm, 1970, 1, 1, 8, 0, 0, -1);
     assert(mktime_z(tz_hong_kong, &tm) == ts);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 8);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 1970 - 1900);
-    assert(tm.tm_wday == 4);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 8 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "HKT") == 0);
+    init_tm(&expected, 1970, 1, 1, 8, 0, 0, 0);
+    init_tm_ext(&expected, DOW_THU, 1, 8 * 3600, "HKT");
+    assert_tm_eq(ts, &expected, &tm);
 
     init_tm(&tm, 1970, 1, 1, 1, 0, 0, -1);
     assert(mktime_z(tz_london, &tm) == ts);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 1);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 1970 - 1900);
-    assert(tm.tm_wday == 4);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 1 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "BST") == 0);
+    init_tm(&expected, 1970, 1, 1, 1, 0, 0, 0);
+    init_tm_ext(&expected, DOW_THU, 1, 3600, "BST");
+    assert_tm_eq(ts, &expected, &tm);
 
     init_tm(&tm, 1969, 12, 31, 19, 0, 0, -1);
     assert(mktime_z(tz_new_york, &tm) == ts);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 19);
-    assert(tm.tm_mday == 31);
-    assert(tm.tm_mon == 12 - 1);
-    assert(tm.tm_year == 1969 - 1900);
-    assert(tm.tm_wday == 3);
-    assert(tm.tm_yday == 365 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == -5 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EST") == 0);
+    init_tm(&expected, 1969, 12, 31, 19, 0, 0, 0);
+    init_tm_ext(&expected, DOW_WED, 365, -5 * 3600, "EST");
+    assert_tm_eq(ts, &expected, &tm);
 
     // Try the last second of the millenium.
     ts = 978307200 - 1;
     init_tm(&tm, 2001, 1, 1, 10, 59, 59, -1);
     assert(mktime_z(tz_melbourne, &tm) == ts);
-    assert(tm.tm_sec == 59);
-    assert(tm.tm_min == 59);
-    assert(tm.tm_hour == 10);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 2001 - 1900);
-    assert(tm.tm_wday == 1);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 1);
-    assert(tm.tm_gmtoff == 11 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "AEDT") == 0);
+    init_tm(&expected, 2001, 1, 1, 10, 59, 59, 1);
+    init_tm_ext(&expected, DOW_MON, 1, 11 * 3600, "AEDT");
+    assert_tm_eq(ts, &expected, &tm);
 
     init_tm(&tm, 2001, 1, 1, 7, 59, 59, -1);
     assert(mktime_z(tz_hong_kong, &tm) == ts);
-    assert(tm.tm_sec == 59);
-    assert(tm.tm_min == 59);
-    assert(tm.tm_hour == 7);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 2001 - 1900);
-    assert(tm.tm_wday == 1);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 8 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "HKT") == 0);
+    init_tm(&expected, 2001, 1, 1, 7, 59, 59, 0);
+    init_tm_ext(&expected, DOW_MON, 1, 8 * 3600, "HKT");
+    assert_tm_eq(ts, &expected, &tm);
 
     init_tm(&tm, 2000, 12, 31, 23, 59, 59, -1);
     assert(mktime_z(tz_london, &tm) == ts);
-    assert(tm.tm_sec == 59);
-    assert(tm.tm_min == 59);
-    assert(tm.tm_hour == 23);
-    assert(tm.tm_mday == 31);
-    assert(tm.tm_mon == 12 - 1);
-    assert(tm.tm_year == 2000 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 366 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 0);
-    assert(strcmp(tm.tm_zone, "GMT") == 0);
+    init_tm(&expected, 2000, 12, 31, 23, 59, 59, 0);
+    init_tm_ext(&expected, DOW_SUN, 366, 0, "GMT");
+    assert_tm_eq(ts, &expected, &tm);
 
     init_tm(&tm, 2000, 12, 31, 18, 59, 59, -1);
     assert(mktime_z(tz_new_york, &tm) == ts);
-    assert(tm.tm_sec == 59);
-    assert(tm.tm_min == 59);
-    assert(tm.tm_hour == 18);
-    assert(tm.tm_mday == 31);
-    assert(tm.tm_mon == 12 - 1);
-    assert(tm.tm_year == 2000 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 366 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == -5 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EST") == 0);
+    init_tm(&expected, 2000, 12, 31, 18, 59, 59, 0);
+    init_tm_ext(&expected, DOW_SUN, 366, -5 * 3600, "EST");
+    assert_tm_eq(ts, &expected, &tm);
 
     // Try an ambiguous time.  New York fell back on 2012-11-04 at one
     // second after 1:59:59, so let's try 1:30:00 when it was DST
     ts = 1352008800 - 1800;
     init_tm(&tm, 2012, 11, 4, 1, 30, 0, 1);
     assert(mktime_z(tz_new_york, &tm) == ts);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 30);
-    assert(tm.tm_hour == 1);
-    assert(tm.tm_mday == 4);
-    assert(tm.tm_mon == 11 - 1);
-    assert(tm.tm_year == 2012 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 309 - 1);
-    assert(tm.tm_isdst == 1);
-    assert(tm.tm_gmtoff == -4 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EDT") == 0);
+    init_tm(&expected, 2012, 11, 4, 1, 30, 0, 1);
+    init_tm_ext(&expected, DOW_SUN, 309, -4 * 3600, "EDT");
+    assert_tm_eq(ts, &expected, &tm);
 
     // Repeat with standard time.
     ts = 1352008800 + 1800;
     init_tm(&tm, 2012, 11, 4, 1, 30, 0, 0);
     assert(mktime_z(tz_new_york, &tm) == ts);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 30);
-    assert(tm.tm_hour == 1);
-    assert(tm.tm_mday == 4);
-    assert(tm.tm_mon == 11 - 1);
-    assert(tm.tm_year == 2012 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 309 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == -5 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EST") == 0);
+    init_tm(&expected, 2012, 11, 4, 1, 30, 0, 0);
+    init_tm_ext(&expected, DOW_SUN, 309, -5 * 3600, "EST");
+    assert_tm_eq(ts, &expected, &tm);
 
     // Try a non-existent time.  New York sprang forward on 2012-03-11
     // at 1 second after 01:59:59.  Try 02:30:00.  An hour after
@@ -209,49 +148,25 @@ int main(int argc, char *argv[])
     ts = 1331449200 + 1800;
     init_tm(&tm, 2012, 3, 11, 2, 30, 0, 0);
     assert(mktime_z(tz_new_york, &tm) == ts);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 30);
-    assert(tm.tm_hour == 3);
-    assert(tm.tm_mday == 11);
-    assert(tm.tm_mon == 3 - 1);
-    assert(tm.tm_year == 2012 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 71 - 1);
-    assert(tm.tm_isdst == 1);
-    assert(tm.tm_gmtoff == -4 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EDT") == 0);
+    init_tm(&expected, 2012, 3, 11, 3, 30, 0, 1);
+    init_tm_ext(&expected, DOW_SUN, 71, -4 * 3600, "EDT");
+    assert_tm_eq(ts, &expected, &tm);
 
     // Repeat but with the DST indicator indicating an hour before
     // 03:30:00 EDT.
     ts = 1331449200 - 1800;
     init_tm(&tm, 2012, 3, 11, 2, 30, 0, 1);
     assert(mktime_z(tz_new_york, &tm) == ts);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 30);
-    assert(tm.tm_hour == 1);
-    assert(tm.tm_mday == 11);
-    assert(tm.tm_mon == 3 - 1);
-    assert(tm.tm_year == 2012 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 71 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == -5 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EST") == 0);
+    init_tm(&expected, 2012, 3, 11, 1, 30, 0, 0);
+    init_tm_ext(&expected, DOW_SUN, 71, -5 * 3600, "EST");
+    assert_tm_eq(ts, &expected, &tm);
 
     // Set up a tm based on seconds.
     ts = 1660912736;
     init_tm(&tm, 1970, 1, 1, 0, 0, 0, -1);
     tm.tm_sec = ts + 10 * 60 * 60;
     assert(mktime_z(tz_melbourne, &tm) == ts);
-    assert(tm.tm_sec == 56);
-    assert(tm.tm_min == 38);
-    assert(tm.tm_hour == 22);
-    assert(tm.tm_mday == 19);
-    assert(tm.tm_mon == 8 - 1);
-    assert(tm.tm_year == 2022 - 1900);
-    assert(tm.tm_wday == 5);
-    assert(tm.tm_yday == 231 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 10 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "AEST") == 0);
+    init_tm(&expected, 2022, 8, 19, 22, 38, 56, 0);
+    init_tm_ext(&expected, DOW_FRI, 231, 10 * 3600, "AEST");
+    assert_tm_eq(ts, &expected, &tm);
 }

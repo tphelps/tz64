@@ -28,6 +28,7 @@
 #include <unistd.h>
 #include <tz64.h>
 #include <tz64file.h>
+#include "utils.h"
 
 
 static const char *progname;
@@ -96,33 +97,6 @@ static void usage()
     fprintf(stderr, "usage: %s [-t timezone] [-x]\n", progname);
     fprintf(stderr, "    -t timezone    test only timezone\n");
     fprintf(stderr, "    -x             do exhaustive testing\n");
-}
-
-
-static void assert_tm_eq(int64_t ts, const struct tm *expected, const struct tm *actual)
-{
-    // If the tms are equal then we're done.
-    if (actual->tm_sec == expected->tm_sec &&
-        actual->tm_min == expected->tm_min &&
-        actual->tm_hour == expected->tm_hour &&
-        actual->tm_mday == expected->tm_mday &&
-        actual->tm_mon == expected->tm_mon &&
-        actual->tm_year == expected->tm_year &&
-        actual->tm_wday == expected->tm_wday &&
-        actual->tm_yday == expected->tm_yday &&
-        actual->tm_isdst == expected->tm_isdst &&
-        actual->tm_gmtoff == expected->tm_gmtoff &&
-        strcmp(actual->tm_zone, expected->tm_zone) == 0) {
-        return;
-    }
-
-    char actbuf[64], expbuf[64];
-    strftime(actbuf, sizeof(actbuf), "%Y-%m-%d %H:%M:%S %Z", actual);
-    strftime(expbuf, sizeof(expbuf), "%Y-%m-%d %H:%M:%S %Z", expected);
-    fprintf(stderr, "error: broken-down times do not match at %" PRId64 ":\n", ts);
-    fprintf(stderr, "expected: %s\n", expbuf);
-    fprintf(stderr, "  actual: %s\n", actbuf);
-    abort();
 }
 
 

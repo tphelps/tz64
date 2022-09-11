@@ -30,7 +30,7 @@ noinst_PROGRAMS = \
 
 TESTS = $(check_PROGRAMS)
 
-noinst_HEADERS = lib/constants.h
+noinst_HEADERS = lib/constants.h test/utils.h
 include_HEADERS = lib/tz64.h lib/tz64file.h
 
 BUILT_SOURCES = lib/yearinfo.c
@@ -55,10 +55,10 @@ tools_tzdump_LDADD = lib/libtz64.a
 test_test_localtime_SOURCES = test/test-localtime.c
 test_test_localtime_LDADD = lib/libtz64.a
 
-test_test_mktime_SOURCES = test/test-mktime.c
+test_test_mktime_SOURCES = test/test-mktime.c test/utils.c
 test_test_mktime_LDADD = lib/libtz64.a
 
-test_test_endpoints_SOURCES = test/test-endpoints.c
+test_test_endpoints_SOURCES = test/test-endpoints.c test/utils.c
 test_test_endpoints_LDADD = lib/libtz64.a
 
 test_perf_conv_SOURCES = test/perf-conv.c
