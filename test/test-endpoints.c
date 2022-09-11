@@ -33,6 +33,8 @@
 
 static const char *progname;
 static bool exhaustive;
+static int64_t begin_ts = -2208988800;
+static int64_t end_ts = 16725189600 + 86400;
 
 static const char *tz_names[] = {
     "America/Adak",
@@ -97,6 +99,8 @@ static void usage()
     fprintf(stderr, "usage: %s [-t timezone] [-x]\n", progname);
     fprintf(stderr, "    -t timezone    test only timezone\n");
     fprintf(stderr, "    -x             do exhaustive testing\n");
+    fprintf(stderr, "    -b begin ts    start exhaustive testing from ts\n");
+    fprintf(stderr, "    -b end ts      end exhaustive testing at ts\n");
 }
 
 
@@ -146,7 +150,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     test_tm.tm_mday--;
     (void)mktime(&ref_tm);
     ref_tm = dup_tm;
-    ref_ts = mktime(&test_tm);
+    ref_ts = mktime(&ref_tm);
 
     // It had better match now.
     if (test_ts == ref_ts) {
@@ -183,9 +187,7 @@ static void check_tz(const char *name)
         fflush(stdout);
 
         int prev = 0;
-        const int64_t start = -2208988800;
-        const int64_t end = 16725189600 + 86400;
-        for (time_t ts = start; ts <= end; ts++) {
+        for (time_t ts = begin_ts; ts <= end_ts; ts++) {
             int year = check_ts(tz, ts);
             if (prev != year) {
                 printf(" %d", year);
@@ -220,9 +222,26 @@ int main(int argc, char *argv[])
     set_progname (argv[0]);
 
     const char *tz = NULL;
+    char *p;
     int choice;
-    while ((choice = getopt(argc, argv, "t:x")) != -1) {
+    while ((choice = getopt(argc, argv, "b:e:t:x")) != -1) {
         switch (choice) {
+        case 'b':
+            begin_ts = strtoll(optarg, &p, 0);
+            if (p == optarg || *p != '\0') {
+                fprintf(stderr, "%s: error: failed to decode begin timestamp: %s\n", progname, optarg);
+                exit(1);
+            }
+            break;
+
+        case 'e':
+            end_ts = strtoll(optarg, &p, 0);
+            if (p == optarg || *p != '\0') {
+                fprintf(stderr, "%s: error: failed to decode end timestamp: %s\n", progname, optarg);
+                exit(1);
+            }
+            break;
+
         case 't':
             tz = optarg;
             break;
