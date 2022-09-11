@@ -180,6 +180,17 @@ static uint32_t find_rev_index(const struct tz64* restrict tz, int64_t ts)
 }
 
 
+static inline int64_t calc_adj_ts(int64_t ts)
+{
+    int64_t adj_ts = (ts - alt_ref_ts) % secs_per_400_years;
+    if (adj_ts < 0) {
+        adj_ts += secs_per_400_years;
+    }
+
+    return adj_ts;
+}
+
+
 static int find_extra_rev_index(const struct tz64* restrict tz, int64_t adj_ts)
 {
     int i = (adj_ts / avg_secs_per_year) * 2;
@@ -223,7 +234,8 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
         offset = &tz->offsets[tz->offset_map[tz->ts_count - 1]];
     } else {
         // Adjust the timestamp to seconds since 2001-01-01 00:00:00.
-        int64_t adj_ts = (t - alt_ref_ts) % secs_per_400_years;
+        int64_t adj_ts = calc_adj_ts(t);
+
 
         // Bisect to find the offset that applies.
         const int i = find_extra_fwd_index(tz->extra_ts, adj_ts);
@@ -387,7 +399,7 @@ int64_t mktime_z(const struct tz64 *tz, struct tm *tm)
             next_ts = 0;
             next_trans = 0;
         } else {
-            int64_t adj_ts = (ts - alt_ref_ts) % secs_per_400_years;
+            int64_t adj_ts = calc_adj_ts(ts);
             next_ts = adj_ts;
             int j = find_extra_rev_index(tz, adj_ts);
             next_offset = &tz->offsets[tz->offset_map[(j & 1) - 2]];
@@ -404,7 +416,7 @@ int64_t mktime_z(const struct tz64 *tz, struct tm *tm)
         next_offset = NULL;
         next_trans = 0;
     } else {
-        int64_t adj_ts = (ts - alt_ref_ts) % secs_per_400_years;
+        int64_t adj_ts = calc_adj_ts(ts);
         int i = find_extra_rev_index(tz, adj_ts);
         offset = &tz->offsets[tz->offset_map[(i & 1) - 2]];
         curr_ts = adj_ts;
