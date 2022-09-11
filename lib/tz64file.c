@@ -380,7 +380,7 @@ static int parse_tz_string(struct rule* rules, const char *s)
 }
 
 
-static int need_extra_ts(const struct tz64 *tz, const struct rule *rules)
+static int need_extra_ts(const struct rule *rules)
 {
     switch (rules[1].type) {
     case RT_NONE:
@@ -632,7 +632,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         (header.leapcnt + 1) * sizeof(int64_t) +
         (header.leapcnt + 1) * sizeof(int64_t) +
         (header.leapcnt + 1) * sizeof(int32_t) +
-        14 * 2 * sizeof(int32_t) +
+        days_per_week * 2 * 2 * sizeof(int32_t) +
         2 + header.timecnt + 1 +
         header.charcnt;
     char *block = malloc(block_size);
@@ -660,7 +660,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         block += (header.leapcnt + 1) * sizeof(int32_t);
     }
     int32_t *extra_ts = (int32_t *)block;
-    block += 14 * 2 * sizeof(int32_t);
+    block += days_per_week * 2 * 2 * sizeof(int32_t);
     uint8_t *offset_map = (uint8_t *)block + 2;
     block += 2 + header.timecnt + 1;
     char *desig = block;
@@ -806,7 +806,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         }
         rules[0].offset_idx = offset;
 
-        if (need_extra_ts(tz, rules)) {
+        if (need_extra_ts(rules)) {
             // Look up the tz_offset for DST.
             offset = find_offset(tz, header.typecnt, rules[1].desig, rules[1].utoff, 1);
             if (offset < 0) {
@@ -879,6 +879,100 @@ static int load_tz(struct tz64 **tz_out, const char *path)
     assert(res == 0);
 
     return 0;
+}
+
+
+static struct tz64 *make_tz_from_one_rule(const struct rule *rule, int isdst)
+{
+    size_t len = sizeof(struct tz64) + sizeof(struct tz_offset) + 1 + strlen(rule->desig);
+    char *block = calloc(1, len);
+    struct tz64 *tz = (struct tz64 *)block;
+    block += sizeof(struct tz64);
+    struct tz_offset *offsets = (struct tz_offset *)block;
+    block += sizeof(struct tz_offset);
+    uint8_t *offset_map = (uint8_t *)block++;
+    char *desig = block;
+
+    offsets[0].utoff = rule->utoff;
+    offsets[0].isdst = isdst;
+    offsets[0].desig = 0;
+    offset_map[0] = 0;
+    strcpy(desig, rule->desig);
+
+    tz->ts_count = 1;
+    tz->timestamps = utc_timestamps;
+    tz->offset_map = offset_map;
+    tz->offsets = offsets;
+    tz->desig = desig;
+    return tz;
+}
+
+
+static struct tz64 *make_tz_from_two_rules(const struct rule *rules)
+{
+    // Deal with the case of two rules.
+    size_t len =
+        sizeof(struct tz64) +
+        sizeof(struct tz_offset) * 2 + 4 +
+        sizeof(int32_t) * days_per_week * 2 * 2 +
+        strlen(rules[0].desig) + 1 + strlen(rules[1].desig) + 1;
+
+    char *block = calloc(1, len);
+    struct tz64 *tz = (struct tz64 *)block;
+    block += sizeof(struct tz64);
+    struct tz_offset *offsets = (struct tz_offset *)block;
+    block += sizeof(struct tz_offset) * 2;
+    tz->extra_ts = (int32_t *)block;
+    int32_t *extra_ts = (int32_t *)block;
+    block += sizeof(int32_t) * days_per_week * 2 * 2;
+    uint8_t *offset_map = (uint8_t *)block + 2;
+    block += 4;
+    char *desig = block;
+
+    offsets[0].utoff = rules[0].utoff;
+    offsets[0].isdst = 0;
+    offsets[0].desig = 0;
+    size_t dlen = strlen(rules[0].desig);
+    memcpy(desig, rules[0].desig, dlen + 1);
+    offset_map[0] = 0;
+
+    offsets[1].utoff = rules[1].utoff;
+    offsets[1].isdst = 1;
+    offsets[1].desig = dlen + 1;
+    strcpy(desig + dlen + 1, rules[1].desig);
+    offset_map[1] = 1;
+
+    tz->ts_count = 1;
+    tz->timestamps = utc_timestamps;
+    tz->offset_map = offset_map;
+    tz->offsets = offsets;
+    tz->desig = desig;
+    tz->extra_ts = extra_ts;
+
+    int adj = populate_extra_ts(extra_ts, tz, rules);
+    offset_map[-2] = rules[1 - adj].offset_idx;
+    offset_map[-1] = rules[adj].offset_idx;
+    return tz;
+}
+
+
+static struct tz64 *make_tz_from_string(const char *str)
+{
+    // Try to parse the string.
+    struct rule rules[2];
+    if (parse_tz_string(rules, str) < 0) {
+        return NULL;
+    }
+
+    // Deal with the case of only one rule.
+    if (!need_extra_ts(rules)) {
+        int idx = (rules[1].type == RT_NONE) ? 0 : 1;
+        return make_tz_from_one_rule(&rules[idx], idx);
+    } else {
+        rules[0].offset_idx = 0;
+        rules[1].offset_idx = 1;
+        return make_tz_from_two_rules(rules);
+    }
 }
 
 
@@ -965,12 +1059,13 @@ struct tz64 *tzalloc(const char *tz_desc)
     } else {
         res = load_tz(&tz, mkpath(pathbuf, sizeof(pathbuf), tz_desc));
     }
-    if (res == 0) {
+    if (res != ENOENT) {
+        errno = res;
         return tz;
     }
 
-    // FIXME: Otherwise treat it as a POSIX TZ string.
-    return NULL;
+    // Try using the string as a POSIX TZ expression.
+    return make_tz_from_string(tz_desc);
 }
 
 

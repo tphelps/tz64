@@ -30,15 +30,19 @@
 int main(int argc, char *argv[])
 {
     // Load a few time zones.
-    struct tz64 *tz_new_york, *tz_melbourne, *tz_hong_kong, *tz_london;
+    struct tz64 *tz_new_york, *tz_melbourne, *tz_hong_kong, *tz_hk2, *tz_london, *tz_london2;
     tz_new_york = tzalloc("America/New_York");
     assert(tz_new_york != NULL);
     tz_melbourne = tzalloc("Australia/Melbourne");
     assert(tz_melbourne != NULL);
     tz_hong_kong = tzalloc("Asia/Hong_Kong");
     assert(tz_hong_kong != NULL);
+    tz_hk2 = tzalloc("HKT-8");
+    assert(tz_hk2 != NULL);
     tz_london = tzalloc("Europe/London");
     assert(tz_london != NULL);
+    tz_london2 = tzalloc("GMT0BST,M3.5.0/1,M10.5.0");
+    assert(tz_london2 != NULL);
 
     // Look up zero in each time zone.
     struct tm tm;
@@ -54,8 +58,16 @@ int main(int argc, char *argv[])
     assert_tm(ts, 1970, 1, 1, 8, 0, 0, 0, DOW_THU, 1, 8 * 3600, "HKT", &tm);
 
     memset(&tm, 0, sizeof(tm));
+    assert(localtime_rz(tz_hk2, &ts, &tm) == &tm);
+    assert_tm(ts, 1970, 1, 1, 8, 0, 0, 0, DOW_THU, 1, 8 * 3600, "HKT", &tm);
+
+    memset(&tm, 0, sizeof(tm));
     assert(localtime_rz(tz_london, &ts, &tm) == &tm);
     assert_tm(ts, 1970, 1, 1, 1, 0, 0, 0, DOW_THU, 1, 3600, "BST", &tm);
+
+    memset(&tm, 0, sizeof(tm));
+    assert(localtime_rz(tz_london2, &ts, &tm) == &tm);
+    assert_tm(ts, 1970, 1, 1, 0, 0, 0, 0, DOW_THU, 1, 0, "GMT", &tm);
 
     memset(&tm, 0x5a, sizeof(tm));
     assert(localtime_rz(tz_new_york, &ts, &tm) == &tm);
@@ -71,8 +83,16 @@ int main(int argc, char *argv[])
     assert(localtime_rz(tz_hong_kong, &ts, &tm) == &tm);
     assert_tm(ts, 2001, 1, 1, 7, 59, 59, 0, DOW_MON, 1, 8 * 3600, "HKT", &tm);
 
+    memset(&tm, 0xcc, sizeof(tm));
+    assert(localtime_rz(tz_hk2, &ts, &tm) == &tm);
+    assert_tm(ts, 2001, 1, 1, 7, 59, 59, 0, DOW_MON, 1, 8 * 3600, "HKT", &tm);
+
     memset(&tm, 0x1, sizeof(tm));
     assert(localtime_rz(tz_london, &ts, &tm) == &tm);
+    assert_tm(ts, 2000, 12, 31, 23, 59, 59, 0, DOW_SUN, 366, 0, "GMT", &tm);
+
+    memset(&tm, 0x1, sizeof(tm));
+    assert(localtime_rz(tz_london2, &ts, &tm) == &tm);
     assert_tm(ts, 2000, 12, 31, 23, 59, 59, 0, DOW_SUN, 366, 0, "GMT", &tm);
 
     memset(&tm, 0, sizeof(tm));
