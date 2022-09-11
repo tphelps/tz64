@@ -635,7 +635,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         days_per_week * 2 * 2 * sizeof(int32_t) +
         2 + header.timecnt + 1 +
         header.charcnt;
-    char *block = malloc(block_size);
+    char *block = calloc(1, block_size);
     if (block == NULL) {
         return NULL;
     }
