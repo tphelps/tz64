@@ -227,18 +227,15 @@ static int parse_month_rule(struct rule *rule, const char *str)
 }
 
 
-static int parse_julian_rule(struct rule *rule, const char *str)
+static int parse_jrule(struct rule *rule, const char *str, int min, int max)
 {
-    memset(rule, 0, sizeof(*rule));
-    rule->type = RT_JULIAN;
-
     const char *p = str;
     int yday = 0;
     for (int i = 0; i < 3 && isdigit(*p); i++) {
         yday = yday * 10 + *p++ - '0';
     }
 
-    if (yday < 1 || yday > 365) {
+    if (yday < min || yday > max) {
         return -1;
     }
     rule->day = yday;
@@ -259,10 +256,19 @@ static int parse_julian_rule(struct rule *rule, const char *str)
 }
 
 
+static int parse_julian_rule(struct rule *rule, const char *str)
+{
+    memset(rule, 0, sizeof(*rule));
+    rule->type = RT_JULIAN;
+    return parse_jrule(rule, str, 1, 365);
+}
+
+
 static int parse_0julian_rule(struct rule *rule, const char *str)
 {
-    // Not yet implemented.
-    abort();
+    memset(rule, 0, sizeof(*rule));
+    rule->type = RT_0JULIAN;
+    return parse_jrule(rule, str, 0, 365);
 }
 
 
