@@ -52,7 +52,7 @@ AM_CPPFLAGS = -I$(srcdir)/lib
 tools_tzdump_SOURCES = tools/tzdump.c
 tools_tzdump_LDADD = lib/libtz64.a
 
-test_test_localtime_SOURCES = test/test-localtime.c
+test_test_localtime_SOURCES = test/test-localtime.c test/utils.c
 test_test_localtime_LDADD = lib/libtz64.a
 
 test_test_mktime_SOURCES = test/test-mktime.c test/utils.c

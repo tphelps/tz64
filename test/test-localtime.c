@@ -25,6 +25,7 @@
 #include <string.h>
 #include <assert.h>
 #include <tz64.h>
+#include "utils.h"
 
 int main(int argc, char *argv[])
 {
@@ -46,138 +47,45 @@ int main(int argc, char *argv[])
     time_t ts = 0;
     memset(&tm, 0, sizeof(tm));
     assert(localtime_rz(tz_melbourne, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 10);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 1970 - 1900);
-    assert(tm.tm_wday == 4);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 10 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "AEST") == 0);
+    assert_tm(ts, 1970, 1, 1, 10, 0, 0, 0, DOW_THU, 1, 10 * 3600, "AEST", &tm);
 
     memset(&tm, 0, sizeof(tm));
     assert(localtime_rz(tz_hong_kong, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 8);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 1970 - 1900);
-    assert(tm.tm_wday == 4);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 8 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "HKT") == 0);
+    assert_tm(ts, 1970, 1, 1, 8, 0, 0, 0, DOW_THU, 1, 8 * 3600, "HKT", &tm);
 
     memset(&tm, 0, sizeof(tm));
     assert(localtime_rz(tz_london, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 1);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 1970 - 1900);
-    assert(tm.tm_wday == 4);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 1 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "BST") == 0);
+    assert_tm(ts, 1970, 1, 1, 1, 0, 0, 0, DOW_THU, 1, 3600, "BST", &tm);
 
+    memset(&tm, 0x5a, sizeof(tm));
     assert(localtime_rz(tz_new_york, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 19);
-    assert(tm.tm_mday == 31);
-    assert(tm.tm_mon == 12 - 1);
-    assert(tm.tm_year == 1969 - 1900);
-    assert(tm.tm_wday == 3);
-    assert(tm.tm_yday == 365 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == -5 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EST") == 0);
+    assert_tm(ts, 1969, 12, 31, 19, 0, 0, 0, DOW_WED, 365, -5 * 3600, "EST", &tm);
 
     // Try the last second of the millenium.
     ts = 978307200 - 1;
+    memset(&tm, 0xa5, sizeof(tm));
     assert(localtime_rz(tz_melbourne, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 59);
-    assert(tm.tm_min == 59);
-    assert(tm.tm_hour == 10);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 2001 - 1900);
-    assert(tm.tm_wday == 1);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 1);
-    assert(tm.tm_gmtoff == 11 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "AEDT") == 0);
-    
+    assert_tm(ts, 2001, 1, 1, 10, 59, 59, 1, DOW_MON, 1, 11 * 3600, "AEDT", &tm);
+
+    memset(&tm, 0xff, sizeof(tm));
     assert(localtime_rz(tz_hong_kong, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 59);
-    assert(tm.tm_min == 59);
-    assert(tm.tm_hour == 7);
-    assert(tm.tm_mday == 1);
-    assert(tm.tm_mon == 1 - 1);
-    assert(tm.tm_year == 2001 - 1900);
-    assert(tm.tm_wday == 1);
-    assert(tm.tm_yday == 1 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 8 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "HKT") == 0);
+    assert_tm(ts, 2001, 1, 1, 7, 59, 59, 0, DOW_MON, 1, 8 * 3600, "HKT", &tm);
 
+    memset(&tm, 0x1, sizeof(tm));
     assert(localtime_rz(tz_london, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 59);
-    assert(tm.tm_min == 59);
-    assert(tm.tm_hour == 23);
-    assert(tm.tm_mday == 31);
-    assert(tm.tm_mon == 12 - 1);
-    assert(tm.tm_year == 2000 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 366 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == 0);
-    assert(strcmp(tm.tm_zone, "GMT") == 0);
+    assert_tm(ts, 2000, 12, 31, 23, 59, 59, 0, DOW_SUN, 366, 0, "GMT", &tm);
 
+    memset(&tm, 0, sizeof(tm));
     assert(localtime_rz(tz_new_york, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 59);
-    assert(tm.tm_min == 59);
-    assert(tm.tm_hour == 18);
-    assert(tm.tm_mday == 31);
-    assert(tm.tm_mon == 12 - 1);
-    assert(tm.tm_year == 2000 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 366 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == -5 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EST") == 0);
+    assert_tm(ts, 2000, 12, 31, 18, 59, 59, 0, DOW_SUN, 366, -5 * 3600, "EST", &tm);
 
     ts = INT64_C(2171494800);
+    memset(&tm, 0, sizeof(tm));
     assert(localtime_rz(tz_london, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 2);
-    assert(tm.tm_mday == 24);
-    assert(tm.tm_mon == 10 - 1);
-    assert(tm.tm_year == 2038 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 297 - 1);
-    assert(tm.tm_isdst == 1);
-    assert(tm.tm_gmtoff == 1 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "BST") == 0);
+    assert_tm(ts, 2038, 10, 24, 2, 0, 0, 1, DOW_SUN, 297, 3600, "BST", &tm);
 
     ts = INT64_C(13601088000);
+    memset(&tm, 0xdd, sizeof(tm));
     assert(localtime_rz(tz_new_york, &ts, &tm) == &tm);
-    assert(tm.tm_sec == 0);
-    assert(tm.tm_min == 0);
-    assert(tm.tm_hour == 19);
-    assert(tm.tm_mday == 31);
-    assert(tm.tm_mon == 12 - 1);
-    assert(tm.tm_year == 2400 - 1900);
-    assert(tm.tm_wday == 0);
-    assert(tm.tm_yday == 366 - 1);
-    assert(tm.tm_isdst == 0);
-    assert(tm.tm_gmtoff == -5 * 60 * 60);
-    assert(strcmp(tm.tm_zone, "EST") == 0);
+    assert_tm(ts, 2400, 12, 31, 19, 0, 0, 0, DOW_SUN, 366, -5 * 3600, "EST", &tm);
 }
