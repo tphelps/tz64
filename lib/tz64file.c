@@ -52,12 +52,16 @@ enum rule_type {
 };
 
 struct rule {
+    char desig[8];
+    int32_t utoff;
+
     enum rule_type type;
     uint16_t day;
     uint8_t week;
     uint8_t month;
-    uint8_t offset;
     int32_t time;
+
+    uint8_t offset_idx;
 };
 
 
@@ -179,7 +183,6 @@ static int parse_time(int32_t *time_out, const char *str)
 
 static int parse_month_rule(struct rule *rule, const char *str)
 {
-    memset(rule, 0, sizeof(*rule));
     rule->type = RT_MONTH;
 
     const char *p = str;
@@ -258,7 +261,6 @@ static int parse_jrule(struct rule *rule, const char *str, int min, int max)
 
 static int parse_julian_rule(struct rule *rule, const char *str)
 {
-    memset(rule, 0, sizeof(*rule));
     rule->type = RT_JULIAN;
     return parse_jrule(rule, str, 1, 365);
 }
@@ -266,7 +268,6 @@ static int parse_julian_rule(struct rule *rule, const char *str)
 
 static int parse_0julian_rule(struct rule *rule, const char *str)
 {
-    memset(rule, 0, sizeof(*rule));
     rule->type = RT_0JULIAN;
     return parse_jrule(rule, str, 0, 365);
 }
@@ -288,10 +289,10 @@ static int parse_rule(struct rule *rule, const char *str)
 }
 
 
-static int find_offset(const struct tz64 *tz, uint8_t typecnt, const char *desig, int32_t offset, int isdst)
+static int find_offset(const struct tz64 *tz, uint8_t typecnt, const char *desig, int32_t utoff, int isdst)
 {
     for (uint8_t i = 0; i < typecnt; i++) {
-        if (tz->offsets[i].utoff == offset &&
+        if (tz->offsets[i].utoff == utoff &&
             tz->offsets[i].isdst == isdst &&
             strcmp(desig, tz->desig + tz->offsets[i].desig) == 0) {
             return i;
@@ -302,70 +303,52 @@ static int find_offset(const struct tz64 *tz, uint8_t typecnt, const char *desig
 }
 
 
-static int parse_tz_string(struct tz64 *tz, struct rule* rules, uint32_t typecnt, const char *s)
+static int parse_tz_string(struct rule* rules, const char *s)
 {
     // POSIX specifies: stdoffset[dst[offset][,start[/time],end[/time]]]
     // We support: stdoffset[dst[offset],start[/time],end[/time]]
     // (start and end are mandatory if dst exiss)
 
     // Parse the designation
-    char desig[16];
-    int len = parse_desig(desig, sizeof(desig), s);
+    memset(rules, 0, sizeof(rules) * 2);
+    int len = parse_desig(rules[0].desig, sizeof(rules[0].desig), s);
     if (len < 0) {
         return -1;
     }
     s += len;
 
     // Parse the time.
-    int32_t offset;
-    len = parse_time(&offset, s);
+    len = parse_time(&rules[0].utoff, s);
     if (len < 0) {
-        fprintf(stderr, "error: invalid std offset\n");
-        exit(1);
-    }
-    s += len;
-    offset = -offset;
-
-    // Look for a matching offset.
-    int i = find_offset(tz, typecnt, desig, offset, 0);
-    if (i < 0) {
         return -1;
     }
-    uint8_t stdoff = i;
+    s += len;
+    rules[0].utoff = -rules[0].utoff;
 
     // If no daylight savings time then we're done.
     if (*s == '\0') {
         rules[0].type = RT_NONE;
-        rules[0].offset = stdoff;
-        rules[1].type = RT_NONE;
-        rules[1].offset = stdoff;
+        memcpy(&rules[1], &rules[0], sizeof(struct rule));
         return 0;
     }
 
     // Parse the daylight savings time designation
-    len = parse_desig(desig, sizeof(desig), s);
+    len = parse_desig(rules[1].desig, sizeof(rules[1].desig), s);
     if (len < 0) {
         return -1;
     }
     s += len;
 
     // And offset, if any.
-    offset += 3600;
+    rules[1].utoff = rules[0].utoff + 3600;
     if (*s != '\0' && (isdigit(*s) || *s == '+' || *s == '-')) {
-        len = parse_time(&offset, s);
+        len = parse_time(&rules[1].utoff, s);
         if (len < 0) {
             return -1;
         }
         s += len;
-        offset = -offset;
+        rules[1].utoff = -rules[1].utoff;
     }
-
-    // Find the offset for this rule.
-    i = find_offset(tz, typecnt, desig, offset, 1);
-    if (i < 0) {
-        return -1;
-    }
-    uint8_t dstoff = i;
 
     // If there are no rules then just fail.
     if (*s++ != ',') {
@@ -387,10 +370,6 @@ static int parse_tz_string(struct tz64 *tz, struct rule* rules, uint32_t typecnt
         return -1;
     }
     s += len;
-
-    // Record the offsets.
-    rules[0].offset = stdoff;
-    rules[1].offset = dstoff;
 
     // Check for trailing garbage.
     if (*s != '\0') {
@@ -455,7 +434,7 @@ static int64_t calc_month_trans(const struct tz64 *tz, const struct rule *rule, 
     tm.tm_mon = rule->month - 1;
     tm.tm_year = year - base_year;
     tm.tm_isdst = 0;
-    return mktime_z(&tz_utc, &tm) - tz->offsets[rule->offset].utoff;
+    return mktime_z(&tz_utc, &tm) - tz->offsets[rule->offset_idx].utoff;
 }
 
 
@@ -476,7 +455,7 @@ static int64_t calc_julian_trans(const struct tz64 *tz, const struct rule *rule,
     tm.tm_mon = mon;
     tm.tm_year = year - base_year;
     tm.tm_isdst = 0;
-    return mktime_z(&tz_utc, &tm) - tz->offsets[rule->offset].utoff;
+    return mktime_z(&tz_utc, &tm) - tz->offsets[rule->offset_idx].utoff;
 }
 
 
@@ -497,7 +476,7 @@ static int64_t calc_0julian_trans(const struct tz64 *tz, const struct rule *rule
     ts += rule->day * secs_per_day;
 
     // And adjust for the local offset.
-    return ts - tz->offsets[rule->offset].utoff;
+    return ts - tz->offsets[rule->offset_idx].utoff;
 }
 
 
@@ -814,16 +793,32 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     // Parse the tz string.
     if (tzbuf[0] != '\0') {
         struct rule rules[2];
-        if (parse_tz_string(tz, rules, header.typecnt, tzbuf) < 0) {
+        if (parse_tz_string(rules, tzbuf) < 0) {
             errno = EINVAL;
             goto err;
         }
 
+        // Look up the tz_offset for standard time.
+        int offset = find_offset(tz, header.typecnt, rules[0].desig, rules[0].utoff, 0);
+        if (offset < 0) {
+            errno = EINVAL;
+            return NULL;
+        }
+        rules[0].offset_idx = offset;
+
         if (need_extra_ts(tz, rules)) {
+            // Look up the tz_offset for DST.
+            offset = find_offset(tz, header.typecnt, rules[1].desig, rules[1].utoff, 1);
+            if (offset < 0) {
+                errno = EINVAL;
+                return NULL;
+            }
+            rules[1].offset_idx = offset;
+
             int adj = populate_extra_ts(extra_ts, tz, rules);
             tz->extra_ts = extra_ts;
-            offset_map[-2] = rules[1 - adj].offset;
-            offset_map[-1] = rules[adj].offset;
+            offset_map[-2] = rules[1 - adj].offset_idx;
+            offset_map[-1] = rules[adj].offset_idx;
         }
     }
 
