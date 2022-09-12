@@ -58,3 +58,6 @@ struct tz64 {
 
 void tz_header_fix_endian(struct tz_header *header);
 size_t tz_header_data_len(const struct tz_header *header, size_t time_size);
+
+int64_t tz64_tm_to_ts(const struct tz64 *restrict tz, struct tm *tm);
+struct tm *tz64_ts_to_tm(const struct tz64 *restrict tz, int64_t ts, struct tm* restrict tm);

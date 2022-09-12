@@ -205,12 +205,10 @@ static int find_extra_rev_index(const struct tz64* restrict tz, int64_t adj_ts)
 }
 
 
-struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict ts, struct tm *restrict tm)
+struct tm *tz64_ts_to_tm(const struct tz64* restrict tz, int64_t ts, struct tm *restrict tm)
 {
-    int64_t t = *ts;
-
     // Don't even bother if we know the year will overflow 32 bits.
-    if (t < min_tm_ts || t > max_tm_ts) {
+    if (ts < min_tm_ts || ts > max_tm_ts) {
         errno = EOVERFLOW;
         return NULL;
     }
@@ -218,23 +216,23 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
     // Figure out how many leap seconds we're dealing wih.
     int32_t lsec = 0, extra = 0;
     if (tz->leap_count != 0) {
-        const uint32_t li = find_fwd_index(tz->leap_ts, tz->leap_count, t);
-        extra = (tz->leap_ts[li] == t) ? 1 : 0;
+        const uint32_t li = find_fwd_index(tz->leap_ts, tz->leap_count, ts);
+        extra = (tz->leap_ts[li] == ts) ? 1 : 0;
         lsec = tz->leap_secs[li] - extra;
     }
 
     // Figure out which offset to apply.
     const struct tz_offset *offset;
-    if (t < tz->timestamps[tz->ts_count - 1]) {
+    if (ts < tz->timestamps[tz->ts_count - 1]) {
         // Do a binary search to find the index of latest timestamp no
         // later than t, and adjust the timestamp.
-        const uint32_t i = find_fwd_index(tz->timestamps, tz->ts_count, t);
+        const uint32_t i = find_fwd_index(tz->timestamps, tz->ts_count, ts);
         offset = &tz->offsets[tz->offset_map[i]];
     } else if (tz->extra_ts == NULL) {
         offset = &tz->offsets[tz->offset_map[tz->ts_count - 1]];
     } else {
         // Adjust the timestamp to seconds since 2001-01-01 00:00:00.
-        int64_t adj_ts = calc_adj_ts(t);
+        int64_t adj_ts = calc_adj_ts(ts);
 
         // Bisect to find the offset that applies.
         const int i = find_extra_fwd_index(tz->extra_ts, adj_ts);
@@ -242,7 +240,7 @@ struct tm *localtime_rz(const struct tz64* restrict tz, time_t const *restrict t
     }
 
     // Convert that to broken-down time as if it were UTC.
-    int64_t year = ts_to_tm_utc(tm, t + offset->utoff - lsec - extra);
+    int64_t year = ts_to_tm_utc(tm, ts + offset->utoff - lsec - extra);
 
     // Bump the second up to 60 if appropriate.
     tm->tm_sec += extra;
@@ -345,7 +343,7 @@ static int64_t canonicalize_tm(struct tm *tm)
 }
 
 
-int64_t mktime_z(const struct tz64 *tz, struct tm *tm)
+int64_t tz64_tm_to_ts(const struct tz64 *tz, struct tm *tm)
 {
     // Sequester the seconds when dealing with time zones that support
     // leap seconds.
@@ -480,7 +478,19 @@ int64_t mktime_z(const struct tz64 *tz, struct tm *tm)
     tm->tm_isdst = offset->isdst;
     tm->tm_gmtoff = offset->utoff;
     tm->tm_zone = tz->desig + offset->desig;
+    return ts;
+}
 
+
+struct tm *localtime_rz(const struct tz64 *restrict tz, time_t const *restrict ts, struct tm *restrict tm)
+{
+    return tz64_ts_to_tm(tz, *ts, tm);
+}
+
+
+time_t mktime_z(const struct tz64 *tz, struct tm *tm)
+{
+    int64_t ts = tz64_tm_to_ts(tz, tm);
     if (sizeof(time_t) == sizeof(int32_t) && (ts < INT32_MIN || ts > INT32_MAX)) {
         return -1;
     }

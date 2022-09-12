@@ -434,7 +434,7 @@ static int64_t calc_month_trans(const struct tz64 *tz, const struct rule *rule, 
     tm.tm_mon = rule->month - 1;
     tm.tm_year = year - base_year;
     tm.tm_isdst = 0;
-    return mktime_z(&tz_utc, &tm) - tz->offsets[rule->offset_idx].utoff;
+    return tz64_tm_to_ts(&tz_utc, &tm) - tz->offsets[rule->offset_idx].utoff;
 }
 
 
@@ -455,7 +455,7 @@ static int64_t calc_julian_trans(const struct tz64 *tz, const struct rule *rule,
     tm.tm_mon = mon;
     tm.tm_year = year - base_year;
     tm.tm_isdst = 0;
-    return mktime_z(&tz_utc, &tm) - tz->offsets[rule->offset_idx].utoff;
+    return tz64_tm_to_ts(&tz_utc, &tm) - tz->offsets[rule->offset_idx].utoff;
 }
 
 
@@ -470,7 +470,7 @@ static int64_t calc_0julian_trans(const struct tz64 *tz, const struct rule *rule
     tm.tm_mon = 0;
     tm.tm_year = year - base_year;
     tm.tm_isdst = 0;
-    int64_t ts = mktime_z(&tz_utc, &tm);
+    int64_t ts = tz64_tm_to_ts(&tz_utc, &tm);
 
     // Add to get the day of the year.
     ts += rule->day * secs_per_day;
@@ -827,7 +827,7 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
         time_t ts = tz->leap_ts[i + 1] + 1;
 
         struct tm tm;
-        if (localtime_rz(tz, &ts, &tm) == NULL) {
+        if (tz64_ts_to_tm(tz, ts, &tm) == NULL) {
             errno = EINVAL;
             goto err;
         }
