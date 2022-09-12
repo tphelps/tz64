@@ -20,6 +20,7 @@
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include <inttypes.h>
+#include <time.h>
 
 #ifndef CONSTANTS_H
 
@@ -75,5 +76,14 @@ static inline int is_leap(int year)
     }
 }
 
+
+static inline int64_t encode_ymdhm(const struct tm *tm)
+{
+    return (((uint64_t)tm->tm_year) << 32) |
+        (((uint32_t)tm->tm_mon) << 24) |
+        (((uint32_t)tm->tm_mday) << 16) |
+        (((uint32_t)tm->tm_hour) << 8) |
+        (uint32_t)tm->tm_min;
+}
 
 #endif // CONSTANTS_H

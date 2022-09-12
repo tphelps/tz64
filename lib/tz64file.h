@@ -58,12 +58,3 @@ struct tz64 {
 
 void tz_header_fix_endian(struct tz_header *header);
 size_t tz_header_data_len(const struct tz_header *header, size_t time_size);
-
-static inline int64_t encode_ymdhm(const struct tm *tm)
-{
-    return (((uint64_t)tm->tm_year) << 32) |
-        (((uint32_t)tm->tm_mon) << 24) |
-        (((uint32_t)tm->tm_mday) << 16) |
-        (((uint32_t)tm->tm_hour) << 8) |
-        (uint32_t)tm->tm_min;
-}
