@@ -109,6 +109,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     struct tm ref_tm;
     memset(&ref_tm, 0, sizeof(ref_tm));
     assert(localtime_r(&ts, &ref_tm) == &ref_tm);
+    struct tm dup_tm = ref_tm;
 
     // And then with tz64
     struct tm test_tm;
@@ -129,10 +130,10 @@ static int check_ts(const struct tz64 *tz, time_t ts)
         return year;
     }
 
-    // And mktime sometimes cheats.  Try pushing it a day later and
+    // And mktime sometimes cheats.  Try pushing it a week later and
     // back.
-    struct tm dup_tm = ref_tm;
-    ref_tm.tm_mday++;
+    ref_tm = dup_tm;
+    ref_tm.tm_mday += 7;
     (void)mktime(&ref_tm);
     ref_tm = dup_tm;
     ref_ts = mktime(&ref_tm);
@@ -145,8 +146,9 @@ static int check_ts(const struct tz64 *tz, time_t ts)
         return year;
     }
 
-    // Try pushing it back a day and forward again.
-    test_tm.tm_mday--;
+    // Try pushing it back a week and forward again.
+    ref_tm = dup_tm;
+    ref_tm.tm_mday -= 7;
     (void)mktime(&ref_tm);
     ref_tm = dup_tm;
     ref_ts = mktime(&ref_tm);
