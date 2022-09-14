@@ -455,13 +455,14 @@ int64_t tz64_tm_to_ts(const struct tz64 *tz, struct tm *tm)
             recalc = 1;
         }
     } else {
-        if (tm->tm_isdst >= 0 && !tm->tm_isdst != !offset->isdst &&
-            prev_offset != NULL && !tm->tm_isdst == !prev_offset->isdst &&
-            curr_ts - prev_offset->utoff < curr_trans) {
-            // The time could belong in either this offset or the previous
-            // one, but the DST indicators match for the previous one so
-            // use that.
-            offset = prev_offset;
+        // If the time could belong in either this offset or the
+        // previous one then consult the dst indicator and, failing
+        // that, the offset from UTC.
+        if (tm->tm_isdst >= 0 && prev_offset != NULL && curr_ts - prev_offset->utoff < curr_trans) {
+            if (!tm->tm_isdst == !prev_offset->isdst &&
+                (!tm->tm_isdst != !offset->isdst || tm->tm_gmtoff == prev_offset->utoff)) {
+                offset = prev_offset;
+            }
         }
 
         ts -= offset->utoff;
