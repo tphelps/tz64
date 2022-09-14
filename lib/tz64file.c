@@ -1009,7 +1009,7 @@ static char *mkpath(char *buffer, size_t buflen, const char *rest)
 }
 
 
-struct tz64 *tzalloc(const char *tz_desc)
+struct tz64 *tz64_alloc(const char *tz_desc)
 {
     char pathbuf[256];
     struct tz64 *tz;
@@ -1069,7 +1069,10 @@ struct tz64 *tzalloc(const char *tz_desc)
 }
 
 
-void tzfree(struct tz64 *tz)
+void tz64_free(struct tz64 *tz)
 {
     free(tz);
 }
+
+////////////////////////////////////////////////////////////////////////
+// End of tz64file.c

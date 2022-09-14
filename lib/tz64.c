@@ -481,19 +481,5 @@ int64_t tz64_tm_to_ts(const struct tz64 *tz, struct tm *tm)
     return ts;
 }
 
-
-struct tm *localtime_rz(const struct tz64 *restrict tz, time_t const *restrict ts, struct tm *restrict tm)
-{
-    return tz64_ts_to_tm(tz, *ts, tm);
-}
-
-
-time_t mktime_z(const struct tz64 *tz, struct tm *tm)
-{
-    int64_t ts = tz64_tm_to_ts(tz, tm);
-    if (sizeof(time_t) == sizeof(int32_t) && (ts < INT32_MIN || ts > INT32_MAX)) {
-        return -1;
-    }
-
-    return ts;
-}
+////////////////////////////////////////////////////////////////////////
+// End of tz64.c

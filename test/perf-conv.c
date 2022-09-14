@@ -6,11 +6,12 @@
 #include <errno.h>
 #include <sys/time.h>
 #include <tz64.h>
+#include <tz64file.h>
 
 enum mode {
     MODE_LOCALTIME_R,
     MODE_GMTIME_R,
-    MODE_LOCALTIME_RZ
+    MODE_TZ64_TS_TO_TM
 };
 
 static const char *progname;
@@ -37,7 +38,7 @@ int main(int argc, char *argv[])
 {
     const char *tz_name = NULL;
     unsigned long cycles = 100e6;
-    enum mode mode = MODE_LOCALTIME_RZ;
+    enum mode mode = MODE_TZ64_TS_TO_TM;
     time_t when = time(NULL);
 
     set_progname(argv[0]);
@@ -84,7 +85,7 @@ int main(int argc, char *argv[])
     }
 
     // Load the time zone.
-    struct tz64 *tz = tzalloc(tz_name);
+    struct tz64 *tz = tz64_alloc(tz_name);
     if (tz == NULL) {
         fprintf(stderr, "%s: error: failed to load time zone %s: %s\n", progname, tz_name, strerror(errno));
         exit(1);
@@ -110,8 +111,8 @@ int main(int argc, char *argv[])
         case MODE_GMTIME_R:
             (void)gmtime_r(&when, &tm);
             break;
-        case MODE_LOCALTIME_RZ:
-            (void)localtime_rz(tz, &when, &tm);
+        case MODE_TZ64_TS_TO_TM:
+            (void)tz64_ts_to_tm(tz, when, &tm);
             break;
         }
                 
@@ -122,7 +123,7 @@ int main(int argc, char *argv[])
     printf("%g (%d)\n", (double)(after - before) / CLOCKS_PER_SEC, sum);
 
     struct tm tm;
-    localtime_rz(tz, &when, &tm);
+    tz64_ts_to_tm(tz, when, &tm);
 
     before = clock();
     for (unsigned long i = 0; i < cycles; i++) {
@@ -133,8 +134,8 @@ int main(int argc, char *argv[])
         case MODE_GMTIME_R:
             sum += timegm(&tm);
             break;
-        case MODE_LOCALTIME_RZ:
-            sum += mktime_z(tz, &tm);
+        case MODE_TZ64_TS_TO_TM:
+            sum += tz64_tm_to_ts(tz, &tm);
             break;
         }
     }
@@ -142,6 +143,6 @@ int main(int argc, char *argv[])
 
     printf("%g (%d)\n", (double)(after - before) / CLOCKS_PER_SEC, sum);
 
-    tzfree(tz);
+    tz64_free(tz);
     return 0;
 }

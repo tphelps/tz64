@@ -31,7 +31,7 @@ noinst_PROGRAMS = \
 TESTS = $(check_PROGRAMS)
 
 noinst_HEADERS = lib/constants.h test/utils.h
-include_HEADERS = lib/tz64.h lib/tz64file.h
+include_HEADERS = lib/tz64.h lib/tz64compat.h lib/tz64file.h
 
 BUILT_SOURCES = lib/yearinfo.c
 

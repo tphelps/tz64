@@ -19,47 +19,38 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#ifndef TZ64FILE_H
-#define TZ64FILE_H 1
+#ifndef TZ64COMPAT_H
+#define TZ64COMPAT_H
 
 #include <inttypes.h>
+#include <tz64.h>
 
-// The format of a TZif file header.
-struct tz_header {
-    char magic[4];
-    char version;
-    char _reserved[15];
-    uint32_t isutcnt;
-    uint32_t isstdcnt;
-    uint32_t leapcnt;
-    uint32_t timecnt;
-    uint32_t typecnt;
-    uint32_t charcnt;
-};
+static inline struct tz64 *tzalloc(const char *desc)
+{
+    return tz64_alloc(desc);
+}
 
 
-struct tz_offset {
-    int32_t utoff:23;
-    uint32_t isdst:1;
-    uint32_t desig:8;
-};
+static inline void tzfree(struct tz64 *tz)
+{
+    return tz64_free(tz);
+}
 
 
-struct tz64 {
-    uint32_t ts_count;
-    uint32_t leap_count;
-    const int64_t *timestamps;
-    const uint8_t *offset_map;
-    const struct tz_offset *offsets;
-    const int64_t *leap_ts;
-    const int64_t *rev_leap_ts;
-    const int32_t *leap_secs;
-    const char *desig;
-    const int32_t *extra_ts;
-};
+static inline struct tm *localtime_rz(const struct tz64 *restrict tz, time_t const *restrict ts, struct tm *restrict tm)
+{
+    return tz64_ts_to_tm(tz, *ts, tm);
+}
 
 
-void tz_header_fix_endian(struct tz_header *header);
-size_t tz_header_data_len(const struct tz_header *header, size_t time_size);
+static inline time_t mktime_z(const struct tz64 *tz, struct tm *tm)
+{
+    int64_t ts = tz64_tm_to_ts(tz, tm);
+    if (sizeof(time_t) == sizeof(int32_t) && (ts < INT32_MIN || ts > INT32_MAX)) {
+        return -1;
+    }
 
-#endif // TZ64FILE_H
+    return ts;
+}
+
+#endif // TZ64COMPAT_H

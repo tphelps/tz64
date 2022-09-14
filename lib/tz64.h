@@ -19,16 +19,16 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#ifndef TZ_H
-#define TZ_H
+#ifndef TZ64_H
+#define TZ64_H
 
 #include <inttypes.h>
 #include <time.h>
 
-struct tz64 *tzalloc(const char *path);
-void tzfree(struct tz64 *tz);
+struct tz64 *tz64_alloc(const char *tz_desc);
+void tz64_free(struct tz64 *tz);
 
-struct tm *localtime_rz(const struct tz64 *restrict tz, time_t const *restrict ts, struct tm *restrict tm);
-time_t mktime_z(const struct tz64 *tz, struct tm *tm);
+int64_t tz64_tm_to_ts(const struct tz64 *restrict tz, struct tm *tm);
+struct tm *tz64_ts_to_tm(const struct tz64 *restrict tz, int64_t ts, struct tm* restrict tm);
 
 #endif // TZ_H

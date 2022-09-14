@@ -83,12 +83,12 @@ static const char *format_leap(time_t t)
 }
 
 
-static const char *format_localtime(const struct tz64 *tz, time_t t)
+static const char *format_localtime(const struct tz64 *tz, time_t ts)
 {
     static char buffer[32];
 
     struct tm tm;
-    if (localtime_rz(tz, &t, &tm) == NULL) {
+    if (tz64_ts_to_tm(tz, ts, &tm) == NULL) {
         snprintf(buffer, sizeof(buffer), "<out of range>");
     } else {
         strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M:%S", &tm);
@@ -468,7 +468,7 @@ static void dump_raw_file(const char *path)
 static void dump_cooked_file(const char *path)
 {
     // Load the file.
-    struct tz64 *tz = tzalloc(path);
+    struct tz64 *tz = tz64_alloc(path);
     if (tz == NULL) {
         fprintf(stderr, "%s: error: failed to load TZ file %s: %s\n", progname, path, strerror(errno));
         return;
@@ -504,7 +504,7 @@ static void dump_cooked_file(const char *path)
         }
     }
     
-    tzfree(tz);
+    tz64_free(tz);
 }
 
 

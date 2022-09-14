@@ -30,7 +30,6 @@
 #include <tz64file.h>
 #include "utils.h"
 
-
 static const char *progname;
 static bool exhaustive;
 static int64_t begin_ts = -2208988800;
@@ -114,7 +113,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
     // And then with tz64
     struct tm test_tm;
     memset(&test_tm, 0, sizeof(test_tm));
-    assert(localtime_rz(tz, &ts, &test_tm) == &test_tm);
+    assert(tz64_ts_to_tm(tz, ts, &test_tm) == &test_tm);
 
     // Make sure they produce the same result.
     assert_tm_eq(ts, &ref_tm, &test_tm);
@@ -122,7 +121,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
 
     // Convert back to a timestamp.
     time_t ref_ts = mktime(&ref_tm);
-    time_t test_ts = mktime_z(tz, &test_tm);
+    time_t test_ts = tz64_tm_to_ts(tz, &test_tm);
 
     // See if mktime produces the same result
     if (test_ts == ref_ts) {
@@ -179,7 +178,7 @@ static void check_tz(const char *name)
     tzset();
 
     // Load it the hard way.
-    struct tz64 *tz = tzalloc(name);
+    struct tz64 *tz = tz64_alloc(name);
     assert(tz != NULL);
 
     if (exhaustive) {
@@ -213,7 +212,7 @@ static void check_tz(const char *name)
         }
     }
 
-    tzfree(tz);
+    tz64_free(tz);
 }
 
 
