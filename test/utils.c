@@ -56,7 +56,7 @@ void init_tm_full(struct tm *tm,
 static char *format_tm(char *buffer, size_t buflen, const struct tm *tm)
 {
     char timebuf[64];
-    strftime(timebuf, sizeof(timebuf), "%a %Y-%m-%d %H:%M:%S %M", tm);
+    strftime(timebuf, sizeof(timebuf), "%a %Y-%m-%d %H:%M:%S %Z", tm);
     snprintf(buffer, buflen, "%s yday=%d, dst=%d, offset=%ld", timebuf, tm->tm_yday + 1, tm->tm_isdst, tm->tm_gmtoff);
     return buffer;
 }
