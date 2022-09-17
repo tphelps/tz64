@@ -217,7 +217,7 @@ struct tm *tz64_ts_to_tm(const struct tz64* restrict tz, int64_t ts, struct tm *
     int32_t lsec = 0, extra = 0;
     if (tz->leap_count != 0) {
         const uint32_t li = find_fwd_index(tz->leap_ts, tz->leap_count, ts);
-        extra = (tz->leap_ts[li] == ts) ? 1 : 0;
+        extra = (tz->leap_ts[li] - 60 < ts && ts <= tz->leap_ts[li]) ? 1 : 0;
         lsec = tz->leap_secs[li] - extra;
     }
 
@@ -365,16 +365,19 @@ int64_t tz64_tm_to_ts(const struct tz64 *tz, struct tm *tm)
 
     // Restore the seconds if necessary.
     int recalc = 0;
+    int64_t leap_ts = 0;
+    int32_t lsec = 0;
     if (tz->leap_count != 0) {
         tm->tm_sec = sec;
         ts += sec;
         recalc = (sec < 0 || sec > 59) ? 1 : 0;
-    }
 
-    // Adjust for leap seconds.
-    const uint32_t li = (tz->leap_count == 0) ? 0 : find_rev_leap(tz, encode_ymdhm(tm));
-    const int32_t lsec = (li == 0) ? 0 : tz->leap_secs[li];
-    ts += lsec;
+        // Adjust for leap seconds.
+        uint32_t li = find_rev_leap(tz, encode_ymdhm(tm));
+        lsec = tz->leap_secs[li];
+        ts += lsec;
+        leap_ts = (li + 1 < tz->leap_count) ? tz->leap_ts[li + 1] : INT64_MAX;
+    }
 
     // Find the latest offset that contains the timestamp.
     const struct tz_offset *offset, *prev_offset, *next_offset;
@@ -469,7 +472,7 @@ int64_t tz64_tm_to_ts(const struct tz64 *tz, struct tm *tm)
     }
 
     if (recalc) {
-        int extra = (li < tz->leap_count && tz->leap_ts[li + 1] == ts) ? 1 : 0;
+        int extra = (leap_ts != 0 && tm->tm_sec == 60 && leap_ts - 60 <= ts && ts <= leap_ts) ? 1 : 0;
         ts_to_tm_utc(tm, ts + offset->utoff - lsec - extra);
         tm->tm_sec += extra;
     }
