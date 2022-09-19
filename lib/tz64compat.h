@@ -46,11 +46,8 @@ static inline struct tm *localtime_rz(const struct tz64 *restrict tz, time_t con
 static inline time_t mktime_z(const struct tz64 *tz, struct tm *tm)
 {
     int64_t ts = tz64_tm_to_ts(tz, tm);
-    if (sizeof(time_t) == sizeof(int32_t) && (ts < INT32_MIN || ts > INT32_MAX)) {
-        return -1;
-    }
-
-    return ts;
+    time_t res = ts;
+    return (res == ts) ? res : -1;
 }
 
 #endif // TZ64COMPAT_H
