@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
     struct tm tm;
     memset(&tm, 0, sizeof(tm));
 
-    time_t ts = 0;
+    int64_t ts = 0;
     memset(&tm, 0, sizeof(tm));
     assert(tz64_ts_to_tm(tz_melbourne, ts, &tm) == &tm);
     assert_tm(ts, 1970, 1, 1, 10, 0, 0, 0, DOW_THU, 1, 10 * 3600, "AEST", &tm);

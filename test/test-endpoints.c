@@ -161,7 +161,7 @@ static int check_ts(const struct tz64 *tz, time_t ts)
         return year;
     }
 
-    printf("%" PRId64 " -> %" PRId64 " (%" PRId64 ")\n", ts, test_ts, ref_ts);
+    printf("%" PRId64 " -> %" PRId64 " (%" PRId64 ")\n", (int64_t)ts, (int64_t)test_ts, (int64_t)ref_ts);
     printf("%04d-%02d-%02d %02d:%02d:%02d\n",
            ref_tm.tm_year + 1900,
            ref_tm.tm_mon + 1,
