@@ -34,6 +34,7 @@ noinst_HEADERS = lib/constants.h test/utils.h
 include_HEADERS = lib/tz64.h lib/tz64compat.h lib/tz64file.h
 
 BUILT_SOURCES = lib/yearinfo.c
+EXTRA_DIST = gen-year-info.py
 
 lib/yearinfo.c: $(srcdir)/gen-year-info.py
 	$(srcdir)/gen-year-info.py $@
