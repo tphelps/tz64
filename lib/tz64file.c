@@ -821,6 +821,17 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
     tz->desig = desig;
     tz->extra_ts = NULL;
 
+    // It looks like glibc's zic provides a duplicate final time entry
+    // at INT32_MAX for time zones that don't have daylight savings
+    // time, apparently in an effort to work around poor performance
+    // of glibc's conversion functions after the last explicit time
+    // stamp.  Our performance is better without them, so detect and
+    // remove them.
+    if (tz->ts_count > 1 && tz->timestamps[tz->ts_count - 1] == INT32_MAX &&
+        tz->offset_map[tz->ts_count - 1] == tz->offset_map[tz->ts_count - 2]) {
+        tz->ts_count--;
+    }
+
     // Parse the tz string.
     if (tzbuf[0] != '\0') {
         struct rule rules[2];
