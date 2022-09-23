@@ -418,7 +418,9 @@ static int find_offset_for_ts(const struct tz64 *tz, int64_t ts)
 
 static bool tz_offsets_equal(const struct tz64 *tz, uint8_t a, uint8_t b)
 {
-    return memcmp(&tz->offsets[a], &tz->offsets[b], sizeof(struct tz_offset)) == 0;
+    return tz->offsets[a].utoff == tz->offsets[b].utoff &&
+        tz->offsets[a].isdst == tz->offsets[b].isdst &&
+        strcmp(tz->desig + tz->offsets[a].desig, tz->desig + tz->offsets[b].desig) == 0;
 }
 
 
