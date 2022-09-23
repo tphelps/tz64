@@ -23,6 +23,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <sys/types.h>
@@ -380,16 +381,44 @@ static int parse_tz_string(struct rule* rules, const char *s)
 }
 
 
-static int need_extra_ts(const struct rule *rules)
+static bool is_always_dst(const struct rule *rules)
 {
-    switch (rules[1].type) {
-    case RT_NONE:
-        return 0;
-    case RT_JULIAN:
-        return rules[0].day != 1 || rules[1].day != 365;
-    default:
-        return 1;
+    // As per tzfile(5): "DST is in effect all year if it starts
+    // January 1 at 00:00 and ends December 31 at 24:00 plus the
+    // difference between daylight savings and standard time."
+    return
+        ((rules[0].type == RT_JULIAN && rules[0].day == 1) ||
+         (rules[0].type == RT_0JULIAN && rules[0].day == 0)) &&
+        rules[0].time == 0 &&
+        rules[1].type == RT_JULIAN &&
+        rules[1].day == days_per_nyear &&
+        rules[1].time == secs_per_day + rules[1].utoff - rules[0].utoff;
+}
+
+
+static int find_offset_for_ts(const struct tz64 *tz, int64_t ts)
+{
+    // Find the offset in the 400 year block.
+    int64_t adj_ts = (ts - alt_ref_ts) % secs_per_400_years;
+    if (adj_ts < 0) {
+        adj_ts += secs_per_400_years;
     }
+
+    // Figure out which extra transition that corresponds to.
+    int i = adj_ts / avg_secs_per_year * 2;
+    for (; i < 800; i++) {
+        if (adj_ts < tz64_year_starts[i / 2] + tz->extra_ts[tz64_year_types[i / 2] * 2 + (i & 1)]) {
+            break;
+        }
+    }
+
+    return tz->offset_map[((i + 1) & 1) - 2];
+}
+
+
+static bool tz_offsets_equal(const struct tz64 *tz, uint8_t a, uint8_t b)
+{
+    return memcmp(&tz->offsets[a], &tz->offsets[b], sizeof(struct tz_offset)) == 0;
 }
 
 
@@ -798,27 +827,57 @@ static struct tz64 *process_tzfile(const char *path, const char *data, off_t siz
             goto err;
         }
 
-        // Look up the tz_offset for standard time.
-        int offset = find_offset(tz, header.typecnt, rules[0].desig, rules[0].utoff, 0);
-        if (offset < 0) {
-            errno = EINVAL;
-            return NULL;
-        }
-        rules[0].offset_idx = offset;
-
-        if (need_extra_ts(rules)) {
-            // Look up the tz_offset for DST.
-            offset = find_offset(tz, header.typecnt, rules[1].desig, rules[1].utoff, 1);
+        // If there's a DST entry then look up its offset.
+        if (rules[1].type != RT_NONE) {
+            // Look up the tz_offset.
+            int offset = find_offset(tz, header.typecnt, rules[1].desig, rules[1].utoff, 1);
             if (offset < 0) {
                 errno = EINVAL;
-                return NULL;
+                goto err;
             }
             rules[1].offset_idx = offset;
+        }
 
-            int adj = populate_extra_ts(extra_ts, tz, rules);
-            tz->extra_ts = extra_ts;
-            offset_map[-2] = rules[1 - adj].offset_idx;
-            offset_map[-1] = rules[adj].offset_idx;
+        if (is_always_dst(rules)) {
+            // It's always DST: make sure the tz_offset entry matches
+            // the last transition.
+            if (!tz_offsets_equal(tz, rules[1].offset_idx, tz->offset_map[tz->ts_count - 1])) {
+                errno = EINVAL;
+                goto err;
+            }
+        } else {
+            // It's standard time at least some of the time.  Make
+            // sure its offset is present.
+            int offset = find_offset(tz, header.typecnt, rules[0].desig, rules[0].utoff, 0);
+            if (offset < 0) {
+                errno = EINVAL;
+                goto err;
+            }
+            rules[0].offset_idx = offset;
+
+            // If it's always standard time then make sure it matches
+            // the last transition.
+            if (rules[1].type == RT_NONE) {
+                if (!tz_offsets_equal(tz, rules[0].offset_idx, tz->offset_map[tz->ts_count - 1])) {
+                    errno = EINVAL;
+                    goto err;
+                }
+            } else {
+                // Otherwise it's also DST some times.  Compute the
+                // transition times for 14 representative years.
+                int adj = populate_extra_ts(extra_ts, tz, rules);
+                tz->extra_ts = extra_ts;
+                offset_map[-2] = rules[1 - adj].offset_idx;
+                offset_map[-1] = rules[adj].offset_idx;
+
+                // Check that the last explicit transition matches the
+                // rule in effect at that moment.
+                int i = find_offset_for_ts(tz, tz->timestamps[tz->ts_count - 1]);
+                if (!tz_offsets_equal(tz, i, tz->offset_map[tz->ts_count - 1])) {
+                    errno = EINVAL;
+                    goto err;
+                }
+            }
         }
     }
 
@@ -964,10 +1023,10 @@ static struct tz64 *make_tz_from_string(const char *str)
         return NULL;
     }
 
-    // Deal with the case of only one rule.
-    if (!need_extra_ts(rules)) {
-        int idx = (rules[1].type == RT_NONE) ? 0 : 1;
-        return make_tz_from_one_rule(&rules[idx], idx);
+    if (is_always_dst(rules)) {
+        return make_tz_from_one_rule(&rules[1], 1);
+    } else if (rules[1].type == RT_NONE) {
+        return make_tz_from_one_rule(&rules[0], 0);
     } else {
         rules[0].offset_idx = 0;
         rules[1].offset_idx = 1;
