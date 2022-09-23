@@ -311,7 +311,7 @@ static int parse_tz_string(struct rule* rules, const char *s)
     // (start and end are mandatory if dst exiss)
 
     // Parse the designation
-    memset(rules, 0, sizeof(rules) * 2);
+    memset(rules, 0, sizeof(struct rule) * 2);
     int len = parse_desig(rules[0].desig, sizeof(rules[0].desig), s);
     if (len < 0) {
         return -1;
@@ -329,7 +329,7 @@ static int parse_tz_string(struct rule* rules, const char *s)
     // If no daylight savings time then we're done.
     if (*s == '\0') {
         rules[0].type = RT_NONE;
-        memcpy(&rules[1], &rules[0], sizeof(struct rule));
+        rules[1].type = RT_NONE;
         return 0;
     }
 
