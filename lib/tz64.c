@@ -26,34 +26,10 @@
 #include "tz64file.h"
 
 
-// Populate most of the fields of a struct tm from a UTC timestamp.
-static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
+static inline int64_t populate_ymd(struct tm *tm, int64_t days)
 {
-    // Adjust to seconds since 2001-01-01.
-    ts -= alt_ref_ts;
-
-    // Divide out blocks of 400 years to the timestamp into a
-    // convenient range.
-    int64_t year = alt_ref_year;
-    year += 400 * (ts / secs_per_400_years);
-    ts %= secs_per_400_years;
-    if (ts < 0) {
-        year -= 400;
-        ts += secs_per_400_years;
-    }
-    
-    // Divide the timestamp into hours, minutes and seconds.
-    tm->tm_sec = ts % secs_per_min;
-    ts /= secs_per_min;
-    
-    tm->tm_min = ts % mins_per_hour;
-    ts /= mins_per_hour;
-    
-    tm->tm_hour = ts % hours_per_day;
-    ts /= hours_per_day;
-
-    // The ts now represents days.
-    int64_t days = ts;
+    // Pretend the year is 1 so we can use it for leap calculations.
+    int64_t year = 1;
 
     // Every block of 400 days starts on the same day of the week, and
     // 2001-01-01 was a Monday.  Compute the day of the week.
@@ -78,7 +54,6 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
     days -= (y * days_per_nyear) + y / 4;
 
     tm->tm_yday = days;
-    tm->tm_year = year - base_year;
 
     int leap = is_leap(year);
     tm->tm_mon = days / 32;
@@ -87,7 +62,39 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
     }
 
     tm->tm_mday = days - month_starts[leap][tm->tm_mon] + 1;
-    return year;
+    return year - 1;
+}
+
+
+// Populate most of the fields of a struct tm from a UTC timestamp.
+static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
+{
+    // Adjust to seconds since 2001-01-01.
+    ts -= alt_ref_ts;
+
+    // Divide out blocks of 400 years to the timestamp into a
+    // convenient range.
+    int64_t year = alt_ref_year;
+    year += 400 * (ts / secs_per_400_years);
+    ts %= secs_per_400_years;
+    if (ts < 0) {
+        year -= 400;
+        ts += secs_per_400_years;
+    }
+
+    // Divide the timestamp into hours, minutes and seconds.
+    tm->tm_sec = ts % secs_per_min;
+    ts /= secs_per_min;
+
+    tm->tm_min = ts % mins_per_hour;
+    ts /= mins_per_hour;
+
+    tm->tm_hour = ts % hours_per_day;
+    ts /= hours_per_day;
+
+    year += populate_ymd(tm, ts);
+    tm->tm_year = year - base_year;
+    return year + populate_ymd(tm, ts);
 }
 
 
@@ -290,29 +297,21 @@ static int64_t canonicalize_tm(struct tm *tm)
     clamp(&tm->tm_min, &overflow, mins_per_hour);
     clamp(&tm->tm_hour, &overflow, hours_per_day);
 
-    // The following bit of math is also thanks to Tony Finch.  Again,
-    // see his blog post for an explanation of what's happening:
-    //     https://dotat.at/@/2008-09-15-the-date-of-the-count.html
+    // Convert the year, month and day to days since the beginning of
+    // 1 AD.
     int64_t days = daynum(tm->tm_year + base_year, tm->tm_mon + 1, tm->tm_mday) + overflow;
-    tm->tm_wday = days % days_per_week;
+    days -= 1;
 
-    days += 305;
-    int64_t year = days * 400 / days_per_400_years + 1;
-    year -= (days >= year * 1461 / 4 - year / 100 + year / 400) ? 0 : 1;
-    days -= year * 1461 / 4 - year / 100 + year / 400 - 31;
-    int mon = days * 5 / 153 + 3;
-    days -= mon * 153 / 5 - 92;
-    if (mon < 14) {
-        mon -= 1;
-    } else {
-        mon -= 13;
-        year += 1;
+    // Convert days into 400 year blocks and extra.
+    int64_t year = 1 + 400 * (days / days_per_400_years);
+    days %= days_per_400_years;
+    if (days < 0) {
+        days += days_per_400_years;
+        year -= 1;
     }
 
+    year += populate_ymd(tm, days);
     tm->tm_year = year - base_year;
-    tm->tm_mon = mon - 1;
-    tm->tm_mday = days;
-    tm->tm_yday = month_starts[is_leap(year)][tm->tm_mon] + tm->tm_mday - 1;
 
     return year;
 }
