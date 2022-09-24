@@ -91,24 +91,34 @@ static int64_t ts_to_tm_utc(struct tm *tm, int64_t ts)
 }
 
 
+static inline int64_t daynum(int64_t year, int mon, int day)
+{
+    // Rotate the start of the year to March so that the troublesome
+    // leap day is last.  Also, make March month number 4 to simplify
+    // the calculation below.
+    if (mon > 2) {
+        mon += 1;
+    } else {
+        mon += 13;
+        year -= 1;
+    }
+
+    // Compute the day number since the start of year 1.  This clever
+    // expression is thanks to Tony Finch; see his blog post for a
+    // detailed explanation of what's going on here:
+    //     https://dotat.at/@/2008-09-10-counting-the-days.html
+    return year * 1461 / 4 - year / 100 + year / 400 + mon * 153 / 5 + day - 428;
+}
+
+
 static int64_t tm_utc_to_ts(const struct tm *tm)
 {
-    int64_t ts = alt_ref_ts;
+    int64_t ts = 0;
     ts += tm->tm_sec;
     ts += tm->tm_min * secs_per_min;
     ts += tm->tm_hour * secs_per_hour;
-    ts += tm->tm_yday * secs_per_day;
-
-    int64_t year = tm->tm_year + base_year - alt_ref_year;
-    int64_t block = year / 400;
-    year %= 400;
-    if (year < 0) {
-        year += 400;
-        block -= 1;
-    }
-
-    ts += secs_per_400_years * block;
-    ts += secs_per_nyear * year + secs_per_day * (year / 4 - year / 100);
+    int64_t days = daynum(tm->tm_year + base_year, tm->tm_mon + 1, tm->tm_mday) - daynum(ref_year, 1, 1);
+    ts += days * secs_per_day;
     return ts;
 }
 
@@ -280,64 +290,29 @@ static int64_t canonicalize_tm(struct tm *tm)
     clamp(&tm->tm_min, &overflow, mins_per_hour);
     clamp(&tm->tm_hour, &overflow, hours_per_day);
 
-    // Add the overflow to the day of the month.
-    int64_t days = tm->tm_mday + overflow - 1;
+    // The following bit of math is also thanks to Tony Finch.  Again,
+    // see his blog post for an explanation of what's happening:
+    //     https://dotat.at/@/2008-09-15-the-date-of-the-count.html
+    int64_t days = daynum(tm->tm_year + base_year, tm->tm_mon + 1, tm->tm_mday) + overflow;
+    tm->tm_wday = days % days_per_week;
 
-    // Limit that to no more than 400 days.
-    int64_t year = tm->tm_year + base_year + (overflow / days_per_400_years) * 400;
-    days %= days_per_400_years;
-    if (days < 0) {
-        days += days_per_400_years;
-        year -= 400;
+    days += 305;
+    int64_t year = days * 400 / days_per_400_years + 1;
+    year -= (days >= year * 1461 / 4 - year / 100 + year / 400) ? 0 : 1;
+    days -= year * 1461 / 4 - year / 100 + year / 400 - 31;
+    int mon = days * 5 / 153 + 3;
+    days -= mon * 153 / 5 - 92;
+    if (mon < 14) {
+        mon -= 1;
+    } else {
+        mon -= 13;
+        year += 1;
     }
 
-    // Convert excess months to years.
-    overflow = 0;
-    clamp(&tm->tm_mon, &overflow, 12);
-    year += overflow;
-    int leap = is_leap(year);
-    days += month_starts[leap][tm->tm_mon];
-
-    // We have at most 400 extra years of days.  Convert those to
-    // years in chunks where possible.
-    while (days > days_per_nyear + leap) {
-        if (days >= days_per_ncentury + leap && year % 100 == 0) {
-            days -= days_per_ncentury + leap;
-            year += 100;
-        } else if (days >= days_per_nyear * 20 + 4 + leap && year % 20 == 0) {
-            days -= days_per_nyear * 20 + 4 + leap;
-            year += 20;
-        } else if (days >= days_per_nyear * 4 + leap && year % 4 == 0) {
-            days -= days_per_nyear * 4 + leap;
-            year += 4;
-        } else {
-            days -= days_per_nyear + leap;
-            year += 1;
-        }
-        leap = is_leap(year);
-    }
-
-    // Record the day of the year.
-    tm->tm_yday = days;
     tm->tm_year = year - base_year;
-
-    // Figure out which month that is.
-    int month = days / 32;
-    if (month_starts[leap][month + 1] <= days) {
-        month++;
-    }
-
-    // Calculate month and mday.
-    tm->tm_mon = month;
-    tm->tm_mday = days - month_starts[leap][month] + 1;
-
-    // Figure out the day of the week.
-    int64_t yr = (year - alt_ref_year) % 400;
-    if (yr < 0) {
-        yr += 400;
-    }
-    days += yr * days_per_nyear + yr / 4 - yr / 100;
-    tm->tm_wday = (days + 1) % days_per_week;
+    tm->tm_mon = mon - 1;
+    tm->tm_mday = days;
+    tm->tm_yday = month_starts[is_leap(year)][tm->tm_mon] + tm->tm_mday - 1;
 
     return year;
 }
