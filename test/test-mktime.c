@@ -149,6 +149,21 @@ int main(int argc, char *argv[])
     assert(tz64_tm_to_ts(tz_melb2, &tm) == ts);
     assert_tm(ts, 2022, 8, 19, 22, 38, 56, 0, DOW_FRI, 231, 10 * 3600, "AEST", &tm);
 
+    ts = INT64_C(-62158203125);
+    init_tm(&tm, 0, 4, 14, 8, 26, 40, -1);
+    assert(tz64_tm_to_ts(tz_london, &tm) == ts);
+    assert_tm(ts, 0, 4, 14, 8, 26, 40, 0, DOW_FRI, 105, -75, "LMT", &tm);
+
+    ts = INT64_C(-62162017821);
+    init_tm(&tm, 0, 2, 29, 23, 53, 37, -1);
+    assert(tz64_tm_to_ts(tz_new_york, &tm) == ts);
+    assert_tm(ts, 0, 2, 29, 23, 53, 37, 0, DOW_TUE, 60, -17762, "LMT", &tm);
+
+    ts = INT64_C(-100000000000);
+    init_tm(&tm, -1199, 2, 15, 9, 17, 18, -1);
+    assert(tz64_tm_to_ts(tz_new_york, &tm) == ts);
+    assert_tm(ts, -1199, 2, 15, 9, 17, 18, 0, DOW_THU, 46, -17762, "LMT", &tm);
+
     tz64_free(tz_new_york);
     tz64_free(tz_ny2);
     tz64_free(tz_melbourne);

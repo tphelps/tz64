@@ -110,6 +110,30 @@ int main(int argc, char *argv[])
     assert(tz64_ts_to_tm(tz_new_york, ts, &tm) == &tm);
     assert_tm(ts, 2400, 12, 31, 19, 0, 0, 0, DOW_SUN, 366, -5 * 3600, "EST", &tm);
 
+    // Try an awkward leap day.
+    ts = INT64_C(-2114362800);
+    memset(&tm, 0, sizeof(tm));
+    assert(tz64_ts_to_tm(tz_new_york, ts, &tm) == &tm);
+    assert_tm(ts, 1903, 1, 1, 0, 0, 0, 0, DOW_THU, 1, -5 * 3600, "EST", &tm);
+
+    // And a time in the distant past.
+    ts = INT64_C(-100000000000);
+    memset(&tm, 0, sizeof(tm));
+    assert(tz64_ts_to_tm(tz_new_york, ts, &tm) == &tm);
+    assert_tm(ts, -1199, 2, 15, 9, 17, 18, 0, DOW_THU, 46, -17762, "LMT", &tm);
+
+    // And a time from year zero.
+    ts = INT64_C(-62158203125);
+    memset(&tm, 0, sizeof(tm));
+    assert(tz64_ts_to_tm(tz_london, ts, &tm) == &tm);
+    assert_tm(ts, 0, 4, 14, 8, 26, 40, 0, DOW_FRI, 105, -75, "LMT", &tm);
+
+    // And a leap day from year zero
+    ts = INT64_C(-62162017821);
+    memset(&tm, 0, sizeof(tm));
+    assert(tz64_ts_to_tm(tz_new_york, ts, &tm) == &tm);
+    assert_tm(ts, 0, 2, 29, 23, 53, 37, 0, DOW_TUE, 60, -17762, "LMT", &tm);
+
     // Clean up
     tz64_free(tz_new_york);
     tz64_free(tz_melbourne);
