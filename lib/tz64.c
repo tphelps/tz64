@@ -114,7 +114,15 @@ static inline int64_t daynum(int64_t year, int mon, int day)
     // expression is thanks to Tony Finch; see his blog post for a
     // detailed explanation of what's going on here:
     //     https://dotat.at/@/2008-09-10-counting-the-days.html
-    return year * 1461 / 4 - year / 100 + year / 400 + mon * 153 / 5 + day - 428;
+    int64_t daynum = year * 1461 / 4 - year / 100 + year / 400 + mon * 153 / 5 + day - 428;
+
+    // Compensate for negative numbers truncating towards zero when
+    // they don't divide evenly.
+    if (daynum < 0 && (year % 4 != 0 || (year % 100 == 0 && year % 400 != 0))) {
+        daynum--;
+    }
+
+    return daynum;
 }
 
 
