@@ -307,7 +307,7 @@ static int64_t canonicalize_tm(struct tm *tm)
     days %= days_per_400_years;
     if (days < 0) {
         days += days_per_400_years;
-        year -= 1;
+        year -= 400;
     }
 
     year += populate_ymd(tm, days);
