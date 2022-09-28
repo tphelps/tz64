@@ -118,7 +118,7 @@ static inline int64_t daynum(int64_t year, int mon, int day)
 
     // Compensate for negative numbers truncating towards zero when
     // they don't divide evenly.
-    if (daynum < 0 && (year % 4 != 0 || (year % 100 == 0 && year % 400 != 0))) {
+    if (daynum < 0 && !is_leap(year)) {
         daynum--;
     }
 

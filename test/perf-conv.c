@@ -7,11 +7,13 @@
 #include <sys/time.h>
 #include <tz64.h>
 #include <tz64file.h>
+#include <tz64compat.h>
 
 enum mode {
+    MODE_TZ64_TS_TO_TM,
     MODE_LOCALTIME_R,
     MODE_GMTIME_R,
-    MODE_TZ64_TS_TO_TM
+    MODE_LOCALTIME_RZ
 };
 
 static const char *progname;
@@ -31,6 +33,7 @@ static void usage()
     fprintf(stderr, "    -n cycles       Run each test cycles times [100,000,000]\n");
     fprintf(stderr, "    -u              Mesaure UTC (gmtime/timegm) performance\n");
     fprintf(stderr, "    -c              Measure libc's mktime/localtime_r performance\n");
+    fprintf(stderr, "    -z              Measure libtz (localtime_rz/mktime_z) performance\n");
 }
 
 
@@ -45,7 +48,7 @@ int main(int argc, char *argv[])
 
     char *p;
     int choice;
-    while ((choice = getopt(argc, argv, "cn:s:t:u")) != -1) {
+    while ((choice = getopt(argc, argv, "cn:s:t:uz")) != -1) {
         switch (choice) {
         case 'c':
             mode = MODE_LOCALTIME_R;
@@ -75,6 +78,10 @@ int main(int argc, char *argv[])
             mode = MODE_GMTIME_R;
             break;
 
+        case 'z':
+            mode = MODE_LOCALTIME_RZ;
+            break;
+
         case '?':
             usage();
             exit(0);
@@ -85,11 +92,21 @@ int main(int argc, char *argv[])
     }
 
     // Load the time zone.
-    struct tz64 *tz = tz64_alloc(tz_name);
-    if (tz == NULL) {
-        fprintf(stderr, "%s: error: failed to load time zone %s: %s\n", progname, tz_name, strerror(errno));
-        exit(1);
+    struct tz64 *tz = NULL;
+    if (mode == MODE_TZ64_TS_TO_TM) {
+        tz = tz64_alloc(tz_name);
+        if (tz == NULL) {
+            fprintf(stderr, "%s: error: failed to load time zone %s: %s\n", progname, tz_name, strerror(errno));
+            exit(1);
+        }
+    } else if (mode == MODE_LOCALTIME_RZ) {
+        tz = tzalloc(tz_name);
+        if (tz == NULL) {
+            fprintf(stderr, "%s: error: failed to load time zone %s: %s\n", progname, tz_name, strerror(errno));
+            exit(1);
+        }
     }
+
 
     // Put it in the environment too.
     if (tz_name != NULL) {
@@ -105,14 +122,17 @@ int main(int argc, char *argv[])
 
         struct tm tm;
         switch (mode) {
+        case MODE_TZ64_TS_TO_TM:
+            (void)tz64_ts_to_tm(tz, when, &tm);
+            break;
         case MODE_LOCALTIME_R:
             (void)localtime_r(&when, &tm);
             break;
         case MODE_GMTIME_R:
             (void)gmtime_r(&when, &tm);
             break;
-        case MODE_TZ64_TS_TO_TM:
-            (void)tz64_ts_to_tm(tz, when, &tm);
+        case MODE_LOCALTIME_RZ:
+            (void)localtime_rz(tz, &when, &tm);
             break;
         }
                 
@@ -123,19 +143,22 @@ int main(int argc, char *argv[])
     printf("%g (%d)\n", (double)(after - before) / CLOCKS_PER_SEC, sum);
 
     struct tm tm;
-    tz64_ts_to_tm(tz, when, &tm);
+    localtime_r(&when, &tm);
 
     before = clock();
     for (unsigned long i = 0; i < cycles; i++) {
         switch (mode) {
+        case MODE_TZ64_TS_TO_TM:
+            sum += tz64_tm_to_ts(tz, &tm);
+            break;
         case MODE_LOCALTIME_R:
             sum += mktime(&tm);
             break;
         case MODE_GMTIME_R:
             sum += timegm(&tm);
             break;
-        case MODE_TZ64_TS_TO_TM:
-            sum += tz64_tm_to_ts(tz, &tm);
+        case MODE_LOCALTIME_RZ:
+            sum += mktime_z(tz, &tm);
             break;
         }
     }
