@@ -63,17 +63,9 @@ static const int64_t min_tm_ts = (ref_year - base_year + INT32_MIN - 1) * avg_se
 extern const int64_t *const tz64_year_starts;
 extern const uint8_t *const tz64_year_types;
 
-static inline int is_leap(int year)
+static inline int is_leap(int64_t year)
 {
-    if (year % 4 != 0) {
-        return 0;
-    } else if (year % 100 != 0) {
-        return 1;
-    } else if (year % 400 != 0) {
-        return 0;
-    } else {
-        return 1;
-    }
+    return year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
 }
 
 
